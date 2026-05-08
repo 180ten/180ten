@@ -7,6 +7,7 @@ import {
   buildMondaiHeader, buildBjtSectionHeader, bjtPartLabel,
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
+import { getFixedHeaderText } from "@/app/ad/compose/composeConstants";
 
 const NUMS = ["1", "2", "3", "4"];
 
@@ -684,14 +685,10 @@ function ListeningContent({
     console.warn("[listen] no audioUrl — listening section will render without audio bar");
   }
 
-  // Compute mondai numbering for listening types in first-appearance order.
-  const seenTypes: string[] = [];
-  questions.forEach((q) => {
-    const t = String(q.type ?? "");
-    if (!seenTypes.includes(t)) seenTypes.push(t);
-  });
-  const mondaiMap: Record<string, number> = {};
-  seenTypes.forEach((t, i) => { mondaiMap[t] = i + 1; });
+  // Resolve exam level from prop or first question, used to look up the
+  // level-specific fixed-header text saved in admin compose.
+  const examLevel = level || String(questions[0]?.level ?? "");
+
   let lastType: string | null = null;
 
   questions.forEach((q) => {
@@ -699,9 +696,28 @@ function ListeningContent({
     const type = String(q.type ?? "");
 
     if (type !== lastType) {
-      elems.push(
-        <div key={`mh-${type}`} dangerouslySetInnerHTML={{ __html: buildMondaiHeader(mondaiMap[type] ?? 1, type) }} />
-      );
+      const headerText = getFixedHeaderText(type, q as Record<string, string>, examLevel);
+      if (headerText) {
+        elems.push(
+          <div
+            key={`mh-${type}`}
+            style={{
+              background: "#fef3ef",
+              border: "1px solid #fde0d3",
+              borderRadius: 12,
+              padding: "12px 18px",
+              margin: "18px 0 10px",
+              fontSize: 16,
+              lineHeight: 1.8,
+              fontWeight: 700,
+              color: "#1a1917",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {headerText}
+          </div>
+        );
+      }
       lastType = type;
     }
 
