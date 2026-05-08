@@ -791,6 +791,15 @@ export default function ExamContent({
     [questions],
   );
 
+  console.log("[ExamContent] render", {
+    phase,
+    submitted,
+    totalQs: questions.length,
+    readQsLen: readQs.length,
+    listenQsLen: listenQs.length,
+    sampleListenType: listenQs[0] ? String((listenQs[0] as Record<string, unknown>).type ?? "") : null,
+  });
+
   if (phase === "listen") {
     return (
       <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
@@ -801,6 +810,7 @@ export default function ExamContent({
   // can review every answer in one scroll. During the active read phase only
   // reading is shown.
   if (submitted && listenQs.length > 0) {
+    console.log("[ExamContent] review mode → rendering reading + listening");
     return (
       <>
         <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
