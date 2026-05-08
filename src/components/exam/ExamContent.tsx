@@ -10,6 +10,14 @@ import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examR
 
 const NUMS = ["1", "2", "3", "4"];
 
+// ── Audio URL helper ──
+// Strip XSS-relevant chars (<, ") and replace literal spaces with %20.
+// We don't aggressively re-encode parens/brackets since R2 dev URLs accept
+// them unencoded — over-encoding can break URLs already stored encoded.
+function encodeAudioUrl(raw: string): string {
+  return raw.trim().replace(/</g, "").replace(/"/g, "").replace(/ /g, "%20");
+}
+
 // ── Vocab / Grammar chip types ──
 interface VocabItem { word: string; reading?: string; meaning: string; }
 interface GrammarItem { name: string; furigana?: string; meaning: string; }
@@ -652,14 +660,28 @@ function ListeningContent({
   elems.push(<div key="section-header" className="section-header">🎧 Phần Nghe hiểu</div>);
 
   if (audioUrl) {
-    const safeSrc = audioUrl.replace(/</g, "").replace(/"/g, "");
+    const safeSrc = encodeAudioUrl(audioUrl);
+    console.log("[listen] rendering audio bar", { rawAudioUrl: audioUrl, safeSrc });
     elems.push(
-      <div key="audio-bar" className="audio-bar">
-        <audio controls src={safeSrc} style={{ flex: 1, height: 28 }} id="listen-audio">
-          Trình duyệt không hỗ trợ audio.
-        </audio>
+      <div
+        key="audio-bar"
+        className="audio-bar"
+        onClick={(e) => console.log("[listen] audio-bar div clicked", { target: (e.target as HTMLElement).tagName })}
+      >
+        <audio
+          key={safeSrc}
+          controls
+          src={safeSrc}
+          id="listen-audio"
+          onPlay={() => console.log("[listen] audio PLAY event")}
+          onPause={() => console.log("[listen] audio PAUSE event")}
+          onLoadStart={() => console.log("[listen] audio loadstart")}
+          onClick={() => console.log("[listen] <audio> element clicked directly")}
+        />
       </div>
     );
+  } else {
+    console.warn("[listen] no audioUrl — listening section will render without audio bar");
   }
 
   questions.forEach((q) => {

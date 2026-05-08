@@ -409,10 +409,43 @@ export default function Home() {
   function handleBeginExam() {
     setIsSubmitting(false);
     const times = exam.getLevelTimes();
+    const hasReading = exam.readQs.length > 0;
+    const hasListening = exam.listenQs.length > 0;
+    console.log("[exam] handleBeginExam", { hasReading, hasListening, readCount: exam.readQs.length, listenCount: exam.listenQs.length });
+
+    // Listening-only exam: skip the reading phase entirely.
+    if (!hasReading && hasListening) {
+      exam.startTimer(times.listen * 60, () => { void handleSubmitExam(); });
+      exam.setState((s) => ({ ...s, phase: "listen" }));
+      return;
+    }
+
     exam.startTimer(times.read * 60, () => {
-      void handleSubmitExam();
+      // When the read timer expires, route through the break phase if the
+      // exam has a listening section. Without this, listening was never shown.
+      if (exam.listenQs.length > 0) {
+        goToBreak();
+      } else {
+        void handleSubmitExam();
+      }
     });
     exam.setState((s) => ({ ...s, phase: "read" }));
+  }
+
+  function goToBreak() {
+    console.log("[exam] goToBreak called — switching to break phase");
+    if (breakTimerRef.current) clearInterval(breakTimerRef.current);
+    const breakSeconds = 300;
+    exam.setState((s) => ({ ...s, phase: "break", breakSec: breakSeconds }));
+    const endTime = Date.now() + breakSeconds * 1000;
+    breakTimerRef.current = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      exam.setState((s) => (s.breakSec === remaining ? s : { ...s, breakSec: remaining }));
+      if (remaining <= 0) {
+        if (breakTimerRef.current) clearInterval(breakTimerRef.current);
+        handleStartListening();
+      }
+    }, 1000);
   }
 
   async function handleSubmitExam() {
@@ -428,8 +461,17 @@ export default function Home() {
       visibility: typeof document !== "undefined" ? document.visibilityState : "n/a",
       timerSec: exam.timerSec,
       phase: exam.phase,
+      listenQsCount: exam.listenQs.length,
     });
     if (!exam.curExam) { console.warn("[submit] EARLY EXIT: no curExam"); return; }
+    // SAFETY GUARD: if we're still in the reading phase and there are unseen
+    // listening questions, never finalize — divert to the break overlay so the
+    // listening section actually plays before scoring.
+    if (exam.phase === "read" && exam.listenQs.length > 0) {
+      console.warn("[submit] redirected to break: listening section still pending");
+      goToBreak();
+      return;
+    }
     // Prevent double-submit (timer fires + button clicked simultaneously, or double-click)
     if (isSubmitting) { console.warn("[submit] EARLY EXIT: already submitting"); return; }
     setIsSubmitting(true);
@@ -614,18 +656,24 @@ export default function Home() {
         body: "Bài làm sẽ không được lưu. Bạn có chắc muốn thoát không?",
         onOk: () => {
           setIsSubmitting(false);
+          if (breakTimerRef.current) clearInterval(breakTimerRef.current);
           exam.closeExam();
           setConfirmModal((c) => ({ ...c, open: false }));
         },
       });
     } else {
       setIsSubmitting(false);
+      if (breakTimerRef.current) clearInterval(breakTimerRef.current);
       exam.closeExam();
     }
   }
 
   function handleStartListening() {
     if (breakTimerRef.current) clearInterval(breakTimerRef.current);
+    const times = exam.getLevelTimes();
+    exam.startTimer(times.listen * 60, () => {
+      void handleSubmitExam();
+    });
     exam.setState((s) => ({ ...s, phase: "listen" }));
   }
 
@@ -969,12 +1017,23 @@ export default function Home() {
             isSubmitting={isSubmitting}
             onSubmitClick={() => {
               if (isSubmitting) return;
-              setConfirmModal({
-                open: true,
-                title: "Nộp bài?",
-                body: `Bạn đã trả lời ${answeredQs}/${totalQs} câu. Nộp bài ngay không?`,
-                onOk: () => { handleSubmitExam(); setConfirmModal((c) => ({ ...c, open: false })); },
-              });
+              const hasListening = exam.listenQs.length > 0;
+              console.log("[exam] submit clicked", { phase: exam.phase, hasListening, listenQsCount: exam.listenQs.length });
+              if (exam.phase === "read" && hasListening) {
+                setConfirmModal({
+                  open: true,
+                  title: "Sang phần Nghe hiểu?",
+                  body: "Bạn đã hoàn thành Phần Đọc hiểu. Nghỉ giữa giờ rồi tiếp tục với Phần Nghe hiểu nhé.",
+                  onOk: () => { goToBreak(); setConfirmModal((c) => ({ ...c, open: false })); },
+                });
+              } else {
+                setConfirmModal({
+                  open: true,
+                  title: "Nộp bài?",
+                  body: `Bạn đã trả lời ${answeredQs}/${totalQs} câu. Nộp bài ngay không?`,
+                  onOk: () => { handleSubmitExam(); setConfirmModal((c) => ({ ...c, open: false })); },
+                });
+              }
             }}
             onShowReport={() => { setReportAnimate(true); setReportModalOpen(true); }}
             allQuestions={[
@@ -989,10 +1048,36 @@ export default function Home() {
             examAudioUrl={(() => {
               const raw = exam.curExam?.audio_url;
               if (!raw) return undefined;
-              if (typeof raw === "string" && !raw.trim().startsWith("{")) return raw;
+              // Plain URL string (most common — non-BJT JLPT exams).
+              if (typeof raw === "string") {
+                const trimmed = raw.trim();
+                if (!trimmed.startsWith("{")) return trimmed || undefined;
+                // Stored as a JSON-stringified object — parse and pick the
+                // listening URL. Falls back to BJT keys for older data, then
+                // any first non-empty URL value.
+                try {
+                  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+                  const m = parsed as Record<string, string>;
+                  const pick =
+                    m.listen ?? m.legacy ?? m.bjt_part1 ?? m.part1 ?? m.bjt_part2 ?? m.part2;
+                  if (pick) return pick;
+                  for (const v of Object.values(m)) {
+                    if (typeof v === "string" && v.trim()) return v.trim();
+                  }
+                  return undefined;
+                } catch {
+                  return trimmed || undefined;
+                }
+              }
               if (typeof raw === "object") {
                 const m = raw as Record<string, string>;
-                return m.listen ?? m.legacy ?? undefined;
+                const pick =
+                  m.listen ?? m.legacy ?? m.bjt_part1 ?? m.part1 ?? m.bjt_part2 ?? m.part2;
+                if (pick) return pick;
+                for (const v of Object.values(m)) {
+                  if (typeof v === "string" && v.trim()) return v.trim();
+                }
+                return undefined;
               }
               return undefined;
             })()}

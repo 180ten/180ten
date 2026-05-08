@@ -1623,7 +1623,7 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               <span style={{ fontSize: 11, color: C.purple, fontWeight: 700, whiteSpace: "nowrap" }}>🎧 Audio URL</span>
               <input value={audioUrlDraft} onChange={e => setAudioUrlDraft(e.target.value)} placeholder="https://..." autoFocus
                 style={{ ...iBase, width: 200, padding: "4px 8px", fontSize: 11, borderColor: C.purple+"44" }} />
-              <button type="button" onClick={() => setAudioUrl(audioUrlDraft||"")}
+              <button type="button" onClick={() => setAudioUrl((audioUrlDraft || "").trim().replace(/ /g, "%20"))}
                 style={{ padding: "4px 9px", borderRadius: 6, border: "none", background: C.purple, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Save</button>
               {audioUrl && <audio controls src={audioUrl} style={{ height: 28, width: 130, accentColor: C.purple } as React.CSSProperties} />}
               <button type="button" onClick={() => setShowAudioInput(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: "0 4px" }}>✕</button>
