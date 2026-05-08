@@ -336,7 +336,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
  *                             9/10/11/12). Same colour as the mondai header
  *                             but a much smaller bar. */
 .passage-divider{border:0;border-top:1px dashed var(--border2);margin:14px 0;width:100%;}
-.passage-divider-row{border:0;background:var(--accent);height:4px;width:288px;max-width:80%;border-radius:99px;margin:20px auto;}
+.passage-divider-row{display:none;}
 /* Side-by-side passage / questions layout for reading comprehension.
  * Passage flows at its natural height so the entire content is visible
  * (especially mondai 7 / 情報検索 with long charts/notices). The page
