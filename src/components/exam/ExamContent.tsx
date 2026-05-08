@@ -684,9 +684,26 @@ function ListeningContent({
     console.warn("[listen] no audioUrl — listening section will render without audio bar");
   }
 
+  // Compute mondai numbering for listening types in first-appearance order.
+  const seenTypes: string[] = [];
+  questions.forEach((q) => {
+    const t = String(q.type ?? "");
+    if (!seenTypes.includes(t)) seenTypes.push(t);
+  });
+  const mondaiMap: Record<string, number> = {};
+  seenTypes.forEach((t, i) => { mondaiMap[t] = i + 1; });
+  let lastType: string | null = null;
+
   questions.forEach((q) => {
     const id   = String(q.id ?? "");
     const type = String(q.type ?? "");
+
+    if (type !== lastType) {
+      elems.push(
+        <div key={`mh-${type}`} dangerouslySetInnerHTML={{ __html: buildMondaiHeader(mondaiMap[type] ?? 1, type) }} />
+      );
+      lastType = type;
+    }
 
     if (type === "listen_togo") {
       const t1 = q.type1 as SubQuestion | undefined;
