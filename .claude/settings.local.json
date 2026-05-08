@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(kill 33020)",
+      "Bash(xargs kill *)",
+      "Bash(lsof -i :3000 -sTCP:LISTEN)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:3000/)",
+      "Bash(curl -sS http://127.0.0.1:3000/)",
+      "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:3000/ad)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(curl -s http://localhost:3001/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/)",
+      "Bash(curl -s \"http://localhost:3001/\")",
+      "Bash(curl -sI \"http://localhost:3001/\")",
+      "Bash(curl -s \"http://localhost:3000/\" -o /tmp/page.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_decks?select=id,name,is_admin,folder_id&is_admin=eq.true&limit=5\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_folders?select=id,name,is_admin&is_admin=eq.true&limit=10\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_decks?select=id,name,is_admin&or=\\(is_admin.eq.true\\)&order=created_at\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_decks?select=*&or=\\(is_admin.eq.true\\)&order=created_at&limit=1\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"http://localhost:3000/\" -o /tmp/page.html)",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/profiles?select=id,email,name,plan,role&email=eq.Ngoctho1112000@gmail.com\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_decks?select=id,name,is_admin&or=\\(is_admin.eq.true,user_id.eq.00000000-0000-0000-0000-000000000000\\)&order=created_at\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s \"https://nncanspvpivdahtjbmfu.supabase.co/rest/v1/anki_decks?select=id,name,is_admin,user_id,folder_id\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NjI3MzksImV4cCI6MjA5MTAzODczOX0.pjll_s8i3oyVZauVS8nLgPbP8pXP3LKUnz2npFhcJmE\")",
+      "Bash(curl -s -X POST \"https://nncanspvpivdahtjbmfu.supabase.co/auth/v1/admin/users/3fc9922d-55c5-4658-865b-a4cc3dadeda4/factors\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM\")",
+      "Bash(curl -s -X POST \"https://nncanspvpivdahtjbmfu.supabase.co/auth/v1/admin/generate_link\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM\" -H \"Content-Type: application/json\" -d '{\"type\":\"magiclink\",\"email\":\"porawob732@inraud.com\"}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k: \\(v[:50]+'...' if isinstance\\(v,str\\) and len\\(v\\)>50 else v\\) for k,v in d.items\\(\\)}, indent=2\\)\\)\")",
+      "Bash(curl -s -X PUT https://nncanspvpivdahtjbmfu.supabase.co/auth/v1/admin/users/3fc9922d-55c5-4658-865b-a4cc3dadeda4 -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uY2Fuc3B2cGl2ZGFodGpibWZ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTQ2MjczOSwiZXhwIjoyMDkxMDM4NzM5fQ.ajQwz6Z2qzX4l7oW3O6rF1BHA0zoak8jySmUw7RqruM' -H 'Content-Type: application/json' -d '{\"ban_duration\":\"24h\"}')",
+      "Bash(curl -s \"http://localhost:3000/\" -o /tmp/page2.html -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:3000/\" -o /tmp/page3.html -w \"%{http_code} bytes=%{size_download}\\\\n\")",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}
