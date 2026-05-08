@@ -798,21 +798,35 @@ const TYPE_SHORT_LABEL: Record<string, string> = {
 
 // ── Sidebar Q-grid ──
 export function QGrid({
-  answerKey, keyTypeMap, answers, submitted,
+  answerKey, keyTypeMap, answers, submitted, phase,
 }: {
   answerKey: Record<string, number>;
   keyTypeMap: Record<string, string>;
   answers: Record<string, number>;
   submitted: boolean;
+  phase?: "read" | "listen" | "idle" | "ready" | "break" | "done";
 }) {
   const keys = Object.keys(answerKey);
   if (!keys.length) return null;
 
-  // Group by type, preserving first-appearance order
+  // Filter keys by current phase. During the read phase only show reading
+  // mondai; during the listen phase only show listening mondai. Other phases
+  // (break / done / review) show everything so users can review.
+  const filteredKeys = keys.filter((k) => {
+    const t = keyTypeMap[k] ?? "";
+    const isListen = t.startsWith("listen");
+    if (phase === "read")   return !isListen;
+    if (phase === "listen") return  isListen;
+    return true;
+  });
+  if (!filteredKeys.length) return null;
+
+  // Group by type, preserving first-appearance order. Counter is local to the
+  // filtered set so listen mondai are renumbered from 1 in the listen phase.
   const groups: { type: string; keys: string[]; startIdx: number }[] = [];
   const byType: Record<string, string[]> = {};
   let counter = 0;
-  keys.forEach((k) => {
+  filteredKeys.forEach((k) => {
     const t = keyTypeMap[k] ?? "__other";
     if (!byType[t]) {
       byType[t] = [];

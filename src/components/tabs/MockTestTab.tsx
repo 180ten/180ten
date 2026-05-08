@@ -635,7 +635,7 @@ export default function MockTestTab({
               <div className="sidebar-card" id="ev-nav-section">
                 <div className="sidebar-title">Câu hỏi</div>
                 <div className="q-grid" id="ev-qgrid">
-                  <QGrid answerKey={answerKey} keyTypeMap={keyTypeMap} answers={answers} submitted={submitted && examState === "result"} />
+                  <QGrid answerKey={answerKey} keyTypeMap={keyTypeMap} answers={answers} submitted={submitted && examState === "result"} phase={examPhase} />
                 </div>
               </div>
               {examState === "doing" && (

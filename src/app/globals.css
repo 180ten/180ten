@@ -395,7 +395,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 }
 /* Plain "1." "2." "3." numbering — no pill, no background. */
 .q-num{display:inline-block;padding:0;border-radius:0;background:transparent;color:var(--accent);font-size:20px;font-weight:800;line-height:1.2;box-shadow:none;white-space:nowrap;min-width:0;height:auto;}
-.q-text{display:block;min-width:0;font-size:20px;line-height:1.82;color:#11100e;font-weight:850;overflow-wrap:anywhere;}
+.q-text{display:block;min-width:0;font-size:20px;line-height:1.82;color:#11100e;font-weight:400;overflow-wrap:anywhere;}
 /* Number + question text inline on the same line: "1. Question…" */
 .q-question-row{display:flex;align-items:baseline;flex-wrap:nowrap;gap:8px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px dashed #f1d5c9;}
 .q-question-row::after{content:none;}
@@ -420,7 +420,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
   .q-block{--q-pad-x:16px;--q-pad-y:16px;border-radius:14px;}
   .q-question-row{gap:6px;margin-bottom:14px;padding-bottom:14px;}
   .q-num{min-width:0;height:auto;border-radius:0;background:transparent;color:var(--accent);font-size:18px;}
-  .q-text{font-size:16px;line-height:1.72;font-weight:800;}
+  .q-text{font-size:16px;line-height:1.72;font-weight:400;}
   .choice-btn{min-height:52px;padding:11px 12px;gap:10px;border-radius:12px;font-size:13px;}
   .choice-num,.choice-check{width:26px;height:26px;font-size:12px;}
 }
@@ -441,7 +441,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
   .exam-content > .q-block{--q-pad-x:16px;--q-pad-y:16px;border-radius:14px;}
   .exam-content > .q-block .q-question-row{gap:6px;margin-bottom:14px;padding-bottom:14px;}
   .exam-content > .q-block .q-num{min-width:0;height:auto;border-radius:0;background:transparent;color:var(--accent);font-size:18px;}
-  .exam-content > .q-block .q-text{font-size:16px;line-height:1.72;font-weight:800;}
+  .exam-content > .q-block .q-text{font-size:16px;line-height:1.72;font-weight:400;}
   .exam-content > .q-block .choice-btn{min-height:52px;padding:11px 12px;gap:10px;border-radius:12px;font-size:13px;}
   .exam-content > .q-block .choice-num,.exam-content > .q-block .choice-check{width:26px;height:26px;font-size:12px;}
 }
