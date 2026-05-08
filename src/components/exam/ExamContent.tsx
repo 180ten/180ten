@@ -797,6 +797,19 @@ export default function ExamContent({
         keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
     );
   }
+  // Review mode: after submit, render reading + listening stacked so users
+  // can review every answer in one scroll. During the active read phase only
+  // reading is shown.
+  if (submitted && listenQs.length > 0) {
+    return (
+      <>
+        <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
+          keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
+        <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
+          keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
+      </>
+    );
+  }
   return (
     <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
       keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
