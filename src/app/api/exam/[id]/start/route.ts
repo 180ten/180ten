@@ -23,6 +23,7 @@
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
+import { jwtVerify } from "jose";
 import { buildBalancedPositionMapForQuestions, sanitizeQuestion, type SanitizedQuestion, type RawQuestion } from "@/lib/examShuffle";
 
 // Run on Vercel Edge Runtime — lower cold-start, geo-distributed POPs.
@@ -33,6 +34,13 @@ export const runtime = "edge";
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Supabase HS256 shared secret (Dashboard → Settings → API → JWT Secret).
+// Pre-encoded once at module load instead of per-request.
+const SUPA_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+const jwtSecretBytes = SUPA_JWT_SECRET
+  ? new TextEncoder().encode(SUPA_JWT_SECRET)
+  : null;
 
 interface CachedExamData {
   exam: { id: string; is_published: boolean; is_premium: boolean };
@@ -115,11 +123,24 @@ export async function GET(
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Verify JWT locally with the project's HS256 secret — bypasses the
+  // ~400ms round-trip to Supabase auth GoTrue. jose enforces signature +
+  // expiry checks; on any failure (invalid signature, expired, tampered)
+  // we silently fall through to guest mode (same behaviour as before).
   let authUserId: string | null = null;
-  if (token) {
-    const { data: userRes } = await sb.auth.getUser(token);
-    if (userRes?.user) authUserId = userRes.user.id;
-    // If token invalid, silently fall through to guest mode below.
+  if (token && jwtSecretBytes) {
+    try {
+      const { payload } = await jwtVerify(token, jwtSecretBytes);
+      if (typeof payload.sub === "string" && payload.sub) {
+        authUserId = payload.sub;
+      }
+    } catch {
+      // invalid / expired — treat as guest
+    }
+  } else if (token && !jwtSecretBytes) {
+    // Misconfigured prod: env var missing. Log once per request so the
+    // operator notices, then degrade to guest rather than 500.
+    console.warn("[exam/start] SUPABASE_JWT_SECRET not set — token ignored, treating as guest");
   }
   const t1 = Date.now();
 
