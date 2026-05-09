@@ -7,9 +7,10 @@ interface HomeTabProps {
   onOpenInfoModal: (key: "about" | "privacy" | "terms" | "contact") => void;
   hsUsers: string;
   hsExams: string;
+  hsHours: string;
 }
 
-export default function HomeTab({ onSwitchTab, onOpenInfoModal, hsUsers, hsExams }: HomeTabProps) {
+export default function HomeTab({ onSwitchTab, onOpenInfoModal, hsUsers, hsExams, hsHours }: HomeTabProps) {
   return (
     <div id="tab-home" className="tab-pane active" style={{ display: "flex", flexDirection: "column" }}>
       <div className="hero">
@@ -64,7 +65,7 @@ export default function HomeTab({ onSwitchTab, onOpenInfoModal, hsUsers, hsExams
               <Image src="/svg/practice-hours.svg" alt="" aria-hidden width={22} height={22} />
             </div>
             <div className="stat-text">
-              <div className="num" style={{ whiteSpace: "nowrap" }}>10,000+</div>
+              <div className="num" id="hs-hours" style={{ whiteSpace: "nowrap" }}>{hsHours}</div>
               <div className="label">Giờ luyện tập</div>
             </div>
           </div>

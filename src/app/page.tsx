@@ -117,39 +117,41 @@ export default function Home() {
 
   // ── Hero stats (Supabase counts) ──
   // Cached in localStorage for 10 minutes — these are slow-moving counters
-  // (total users + total published exams) and the home banner doesn't need
-  // them fresh every page-load.
-  const HERO_STATS_KEY = "jlptbro-hero-stats";
+  // and the home banner doesn't need them fresh every page-load.
+  // v2 cache shape adds `hours` (sum(time_spent_sec) → integer hours).
+  const HERO_STATS_KEY = "jlptbro-hero-stats-v2";
   const HERO_STATS_TTL_MS = 10 * 60 * 1000;
 
-  function readHeroCache(): { users?: string; exams?: string } | null {
+  function readHeroCache(): { users?: string; exams?: string; hours?: string } | null {
     try {
       const raw = localStorage.getItem(HERO_STATS_KEY);
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as { users?: string; exams?: string; cachedAt?: number };
+      const parsed = JSON.parse(raw) as { users?: string; exams?: string; hours?: string; cachedAt?: number };
       if (!parsed.cachedAt || Date.now() - parsed.cachedAt > HERO_STATS_TTL_MS) return null;
-      return { users: parsed.users, exams: parsed.exams };
+      return { users: parsed.users, exams: parsed.exams, hours: parsed.hours };
     } catch { return null; }
   }
-  function writeHeroCache(users: string, exams: string) {
+  function writeHeroCache(users: string, exams: string, hours: string) {
     try {
-      localStorage.setItem(HERO_STATS_KEY, JSON.stringify({ users, exams, cachedAt: Date.now() }));
+      localStorage.setItem(HERO_STATS_KEY, JSON.stringify({ users, exams, hours, cachedAt: Date.now() }));
     } catch { /* quota exceeded — ignore */ }
   }
 
   const cached = typeof window !== "undefined" ? readHeroCache() : null;
   const [hsUsers, setHsUsers] = useState(cached?.users ?? "—");
   const [hsExams, setHsExams] = useState(cached?.exams ?? "—");
+  const [hsHours, setHsHours] = useState(cached?.hours ?? "—");
 
   useEffect(() => {
-    // Skip network calls if cache is still fresh — avoids two RPC round-trips
-    // on every home-page mount.
+    // Skip network calls if cache is still fresh — avoids three RPC
+    // round-trips on every home-page mount.
     if (readHeroCache()) return;
 
     let usersStr = "";
     let examsStr = "";
+    let hoursStr = "";
     const persist = () => {
-      if (usersStr && examsStr) writeHeroCache(usersStr, examsStr);
+      if (usersStr && examsStr && hoursStr) writeHeroCache(usersStr, examsStr, hoursStr);
     };
 
     sb.rpc("get_total_users")
@@ -190,6 +192,23 @@ export default function Home() {
           setHsExams(examsStr);
           persist();
         }
+      });
+
+    // Fires in parallel with the two above. RPC bypasses RLS on
+    // exam_results (owner-only). Returns total seconds across all learners
+    // → convert to whole hours, comma-format.
+    sb.rpc("get_total_practice_seconds")
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("[home] get_total_practice_seconds failed:", error.message);
+          // No safe anon fallback (exam_results is owner-RLS) — leave as "—".
+          return;
+        }
+        const seconds = Number(data ?? 0);
+        const hours = Math.floor(seconds / 3600);
+        hoursStr = hours.toLocaleString("vi");
+        setHsHours(hoursStr);
+        persist();
       });
   }, []);
 
@@ -990,6 +1009,7 @@ export default function Home() {
             onOpenInfoModal={(key) => { setInfoKey(key); setInfoOpen(true); }}
             hsUsers={hsUsers}
             hsExams={hsExams}
+            hsHours={hsHours}
           />
         </div>
 
