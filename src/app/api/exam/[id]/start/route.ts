@@ -25,6 +25,12 @@ import { unstable_cache } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, sanitizeQuestion, type SanitizedQuestion, type RawQuestion } from "@/lib/examShuffle";
 
+// Run on Vercel Edge Runtime — lower cold-start, geo-distributed POPs.
+// Verified Edge-safe: Supabase JS v2 uses Web fetch/crypto, examShuffle is
+// pure ES, unstable_cache is wired through globalThis.__incrementalCache on
+// Vercel's Edge sandbox, and crypto.randomUUID is part of Web Crypto.
+export const runtime = "edge";
+
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
