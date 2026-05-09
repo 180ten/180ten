@@ -48,9 +48,13 @@ interface CachedExamData {
  * — those fields are stripped by sanitizeQuestion before the response is
  * returned to the client.
  */
-function getCachedExamData(examId: string): Promise<CachedExamData | null> {
+function getCachedExamData(
+  examId: string,
+  onMiss?: () => void,
+): Promise<CachedExamData | null> {
   return unstable_cache(
     async (): Promise<CachedExamData | null> => {
+      onMiss?.(); // fires only when the cb actually runs (= cache miss)
       if (!SUPA_URL || !SERVICE_KEY) {
         throw new Error("Missing Supabase env vars");
       }
@@ -91,6 +95,12 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  // ── Timing instrumentation ────────────────────────────────────────────
+  // Each phase is timed; cache hit/miss detected via the `onMiss` callback
+  // passed into getCachedExamData (fires only when the inner fetch runs).
+  // Remove or gate by env once root-cause is identified.
+  const t0 = Date.now();
+
   if (!SUPA_URL || !SERVICE_KEY) {
     return jsonError(500, "Server is missing Supabase env vars");
   }
@@ -111,6 +121,7 @@ export async function GET(
     if (userRes?.user) authUserId = userRes.user.id;
     // If token invalid, silently fall through to guest mode below.
   }
+  const t1 = Date.now();
 
   const guestSeed = authUserId ?? crypto.randomUUID();
   const shuffleSeed = guestSeed;
@@ -120,12 +131,14 @@ export async function GET(
   if (!examId) return jsonError(400, "Missing exam id");
 
   // 3) Cached fetch — exam metadata + raw question rows
+  let cacheMissed = false;
   let cached: CachedExamData | null;
   try {
-    cached = await getCachedExamData(examId);
+    cached = await getCachedExamData(examId, () => { cacheMissed = true; });
   } catch (e) {
     return jsonError(500, e instanceof Error ? e.message : "Failed to load exam");
   }
+  const t2 = Date.now();
   if (!cached) return jsonError(404, "Exam not found");
   const { exam, rows } = cached;
   if (exam.is_published === false) return jsonError(403, "Exam is not published");
@@ -155,8 +168,14 @@ export async function GET(
       }
     }
   }
+  const t3 = Date.now();
 
   if (rows.length === 0) {
+    console.log(`[exam/start] auth.getUser: ${t1 - t0}ms (token=${token ? "yes" : "no"})`);
+    console.log(`[exam/start] cache ${cacheMissed ? "MISS" : "HIT"}: ${t2 - t1}ms`);
+    console.log(`[exam/start] profiles.select: ${t3 - t2}ms (premium=${exam.is_premium ? "yes" : "no"})`);
+    console.log(`[exam/start] sanitize: 0ms (no rows)`);
+    console.log(`[exam/start] TOTAL: ${Date.now() - t0}ms`);
     return NextResponse.json({ questions: [], slotKeys: [] });
   }
 
@@ -179,6 +198,13 @@ export async function GET(
       slotToQuestionId[k] = sq.id;
     }
   }
+  const t4 = Date.now();
+
+  console.log(`[exam/start] auth.getUser: ${t1 - t0}ms (token=${token ? "yes" : "no"})`);
+  console.log(`[exam/start] cache ${cacheMissed ? "MISS" : "HIT"}: ${t2 - t1}ms`);
+  console.log(`[exam/start] profiles.select: ${t3 - t2}ms (premium=${exam.is_premium ? "yes" : "no"})`);
+  console.log(`[exam/start] sanitize: ${t4 - t3}ms (rows=${rows.length}, slots=${allSlotKeys.length})`);
+  console.log(`[exam/start] TOTAL: ${t4 - t0}ms (examId=${examId})`);
 
   return NextResponse.json({
     questions: sanitized,
