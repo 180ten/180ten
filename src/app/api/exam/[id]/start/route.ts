@@ -8,13 +8,74 @@
 //
 // Headers:  Authorization: Bearer <user JWT>
 // Response: { questions: SanitizedQuestion[], slotKeys: string[] }
+//
+// ── Caching strategy ───────────────────────────────────────────────────
+// The Supabase fetch (exam metadata + raw questions) is wrapped in
+// unstable_cache and tagged `exam-${examId}`. Admin actions invalidate via
+// revalidateTag — see /api/admin/exams and /api/admin/revalidate-exam.
+//
+// SECURITY: only the static parts are cached. Per-request work stays live:
+//   • Auth + premium-gate (depends on user JWT + profiles row)
+//   • Shuffle position map (uses per-user seed)
+//   • sanitizeQuestion mutation (deep-clones cached data first, so cached
+//     rows are never mutated and `correct`/`wrongs` never leak)
 
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, sanitizeQuestion, type SanitizedQuestion, type RawQuestion } from "@/lib/examShuffle";
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+interface CachedExamData {
+  exam: { id: string; is_published: boolean; is_premium: boolean };
+  rows: RawQuestion[];
+}
+
+/**
+ * Fetch exam metadata + raw questions from Supabase, cached at the Next.js
+ * data-cache layer with a per-exam tag. The cache is invalidated by
+ * revalidateTag(`exam-${examId}`) called from admin mutation routes.
+ *
+ * Cached payload contains `correct`/`wrongs` because the cache is server-only
+ * — those fields are stripped by sanitizeQuestion before the response is
+ * returned to the client.
+ */
+function getCachedExamData(examId: string): Promise<CachedExamData | null> {
+  return unstable_cache(
+    async (): Promise<CachedExamData | null> => {
+      if (!SUPA_URL || !SERVICE_KEY) {
+        throw new Error("Missing Supabase env vars");
+      }
+      const sb = createClient(SUPA_URL, SERVICE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const { data: exam, error: examErr } = await sb
+        .from("exams")
+        .select("id,is_published,is_premium")
+        .eq("id", examId)
+        .maybeSingle();
+      if (examErr) throw new Error(examErr.message);
+      if (!exam) return null;
+
+      const { data: rows, error: qErr } = await sb
+        .from("questions")
+        .select("id,exam_id,type,level,order_index,data")
+        .eq("exam_id", examId)
+        .order("order_index", { ascending: true });
+      if (qErr) throw new Error(qErr.message);
+
+      return {
+        exam: exam as { id: string; is_published: boolean; is_premium: boolean },
+        rows: ((rows ?? []) as unknown) as RawQuestion[],
+      };
+    },
+    [`exam-data-${examId}`],
+    { tags: [`exam-${examId}`], revalidate: false },
+  )();
+}
 
 function jsonError(status: number, error: string) {
   return NextResponse.json({ error }, { status });
@@ -28,7 +89,7 @@ export async function GET(
     return jsonError(500, "Server is missing Supabase env vars");
   }
 
-  // 1) Auth — OPTIONAL. Guest users get a stable "guest" seed.
+  // 1) Auth — OPTIONAL. Guest users get a stable random seed.
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7).trim()
@@ -45,9 +106,6 @@ export async function GET(
     // If token invalid, silently fall through to guest mode below.
   }
 
-  // Mint a per-session grading seed and return it to the client. Logged-in
-  // users keep the historical uid seed so existing shuffle positions remain
-  // stable, but submit can grade without waiting on a fresh auth lookup.
   const guestSeed = authUserId ?? crypto.randomUUID();
   const shuffleSeed = guestSeed;
 
@@ -55,17 +113,19 @@ export async function GET(
   const { id: examId } = await ctx.params;
   if (!examId) return jsonError(400, "Missing exam id");
 
-  // 3) Verify exam exists, published, and access policy
-  const { data: exam, error: examErr } = await sb
-    .from("exams")
-    .select("id,is_published,is_premium")
-    .eq("id", examId)
-    .maybeSingle();
-  if (examErr) return jsonError(500, examErr.message);
-  if (!exam) return jsonError(404, "Exam not found");
+  // 3) Cached fetch — exam metadata + raw question rows
+  let cached: CachedExamData | null;
+  try {
+    cached = await getCachedExamData(examId);
+  } catch (e) {
+    return jsonError(500, e instanceof Error ? e.message : "Failed to load exam");
+  }
+  if (!cached) return jsonError(404, "Exam not found");
+  const { exam, rows } = cached;
   if (exam.is_published === false) return jsonError(403, "Exam is not published");
 
   // 3b) Server-side paywall — never trust the client's lock state.
+  // Profile lookup runs PER REQUEST (plan can change between requests).
   if (exam.is_premium === true) {
     if (!authUserId) {
       return jsonError(401, "Premium subscription required (please log in)");
@@ -90,28 +150,21 @@ export async function GET(
     }
   }
 
-  // 4) Load all questions for this exam
-  const { data: rows, error: qErr } = await sb
-    .from("questions")
-    .select("id,exam_id,type,level,order_index,data")
-    .eq("exam_id", examId)
-    .order("order_index", { ascending: true });
-
-  if (qErr) return jsonError(500, qErr.message);
-  if (!rows || rows.length === 0) {
+  if (rows.length === 0) {
     return NextResponse.json({ questions: [], slotKeys: [] });
   }
 
-  // 5) Sanitize per question + build maps the client needs at submit time
+  // 4) Sanitize per question + build maps the client needs at submit time.
+  // sanitizeQuestion deep-clones q.data internally, so the cached `rows`
+  // payload is never mutated even though we shuffle in place per-request.
   const sanitized: SanitizedQuestion[] = [];
   const allSlotKeys: string[] = [];
   const slotTypeMap: Record<string, string> = {};
   const slotToQuestionId: Record<string, string> = {};
 
-  const rawRows = rows as unknown as RawQuestion[];
-  const posMap = buildBalancedPositionMapForQuestions(rawRows, shuffleSeed, examId);
+  const posMap = buildBalancedPositionMapForQuestions(rows, shuffleSeed, examId);
 
-  for (const row of rawRows) {
+  for (const row of rows) {
     const { sanitized: sq, slotKeys } = sanitizeQuestion(row, shuffleSeed, examId, posMap);
     sanitized.push(sq);
     for (const k of slotKeys) {

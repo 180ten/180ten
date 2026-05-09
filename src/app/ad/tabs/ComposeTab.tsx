@@ -1269,7 +1269,7 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
   exam: ExamMeta; questions: ComposeQuestion[]; audioUrl: string;
   onClose: () => void; showToast: (msg: string, type?: string) => void;
 }) {
-  const [status, setStatus] = useState<"idle"|"saving"|"done"|"error">("idle");
+  const [status, setStatus] = useState<"idle"|"saving"|"revalidating"|"done"|"error">("idle");
   const [errMsg, setErrMsg] = useState("");
 
   const doSave = async () => {
@@ -1294,6 +1294,25 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
     for (let i = 0; i < qs.length; i += 50) {
       const { error: qErr } = await sb.from("questions").upsert(qs.slice(i, i+50) as Record<string, unknown>[]);
       if (qErr) { console.error("questions upsert error:", qErr); setStatus("error"); setErrMsg("Lỗi upsert câu hỏi: " + qErr.message); return; }
+    }
+    // Invalidate the Next.js data-cache for /api/exam/<id>/start so learners
+    // see the new questions immediately. Failure here is non-fatal — cache
+    // simply expires next time it's read.
+    setStatus("revalidating");
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.access_token) {
+        await fetch("/api/admin/revalidate-exam", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ examId: exam.id }),
+        });
+      }
+    } catch (e) {
+      console.warn("[Compose] revalidate failed (non-fatal):", e);
     }
     setStatus("done");
 	    showToast(`Đã lưu và xuất bản bộ đề "${exam.name}" (${questions.length} câu) ✓`, "success");
@@ -1332,8 +1351,8 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
             </div>
           : <div style={{ display: "flex", gap: 10 }}>
               <button type="button" onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 9, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Hủy</button>
-              <button type="button" onClick={doSave} disabled={status==="saving"} style={{ flex: 2, padding: 11, borderRadius: 9, border: "none", background: status==="saving"?C.muted2:C.green, color: "#fff", fontSize: 13, fontWeight: 800, cursor: status==="saving"?"not-allowed":"pointer", transition: "all .2s" }}>
-                {status==="saving"?"⏳ Đang lưu...":status==="error"?"↺ Thử lại":"💾 Lưu bộ đề"}
+              <button type="button" onClick={doSave} disabled={status==="saving"||status==="revalidating"} style={{ flex: 2, padding: 11, borderRadius: 9, border: "none", background: (status==="saving"||status==="revalidating")?C.muted2:C.green, color: "#fff", fontSize: 13, fontWeight: 800, cursor: (status==="saving"||status==="revalidating")?"not-allowed":"pointer", transition: "all .2s" }}>
+                {status==="saving"?"⏳ Đang lưu...":status==="revalidating"?"⚡ Đang tạo cache...":status==="error"?"↺ Thử lại":"💾 Lưu bộ đề"}
               </button>
             </div>
         }

@@ -1,5 +1,6 @@
 // POST /api/admin/exams — admin-only mutations on exams + questions
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdmin, adminErrorResponse } from "@/lib/supabase-admin";
 
 interface Body {
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
       const { error } = await service.from("exams")
         .update({ is_published: body.value }).eq("id", body.exam_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      revalidateTag(`exam-${body.exam_id}`, "max");
       return NextResponse.json({ ok: true });
     }
 
@@ -27,6 +29,7 @@ export async function POST(req: Request) {
       const { error } = await service.from("exams")
         .update({ is_premium: body.value }).eq("id", body.exam_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      revalidateTag(`exam-${body.exam_id}`, "max");
       return NextResponse.json({ ok: true });
     }
 
@@ -36,6 +39,7 @@ export async function POST(req: Request) {
       if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
       const { error } = await service.from("exams").delete().eq("id", body.exam_id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      revalidateTag(`exam-${body.exam_id}`, "max");
       return NextResponse.json({ ok: true });
     }
 
