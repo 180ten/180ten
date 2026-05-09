@@ -137,15 +137,23 @@ export default function Home() {
     } catch { /* quota exceeded — ignore */ }
   }
 
-  const cached = typeof window !== "undefined" ? readHeroCache() : null;
-  const [hsUsers, setHsUsers] = useState(cached?.users ?? "—");
-  const [hsExams, setHsExams] = useState(cached?.exams ?? "—");
-  const [hsHours, setHsHours] = useState(cached?.hours ?? "—");
+  // useState initial MUST be the same on server and client to avoid the
+  // hydration mismatch that crashed earlier (React error #418). Cache is
+  // read INSIDE the effect (post-hydration) and applied via setState.
+  const [hsUsers, setHsUsers] = useState("—");
+  const [hsExams, setHsExams] = useState("—");
+  const [hsHours, setHsHours] = useState("—");
 
   useEffect(() => {
-    // Skip network calls if cache is still fresh — avoids three RPC
-    // round-trips on every home-page mount.
-    if (readHeroCache()) return;
+    // Cache read happens after hydration — safe to touch localStorage.
+    const cached = readHeroCache();
+    if (cached) {
+      if (cached.users) setHsUsers(cached.users);
+      if (cached.exams) setHsExams(cached.exams);
+      if (cached.hours) setHsHours(cached.hours);
+      // Cache fresh → skip the three RPC round-trips entirely.
+      return;
+    }
 
     let usersStr = "";
     let examsStr = "";
