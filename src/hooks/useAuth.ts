@@ -137,21 +137,33 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
       }
     }, 6000);
 
+    // 4-second per-attempt timeout — if Supabase auth lock contention
+    // hangs fetchProfile, race against a timer that resolves false so the
+    // boot loop can move on instead of blocking setReady forever.
+    const fetchProfileBounded = (u: User): Promise<boolean> =>
+      Promise.race([
+        fetchProfile(u),
+        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      ]);
+
     const boot = async (u: User | null, reason: string) => {
       console.log('[useAuth] boot ENTER', { reason, hasUser: !!u, alreadyBooted: booted });
       if (booted) return;
       booted = true;
-      clearTimeout(safetyTimer);
+      // Note: safety timer NOT cleared here — kept armed so that if any
+      // step below stalls past 6s the timer can still force ready=true.
       if (u) {
         setUser(u);
         for (let i = 0; i < 3; i++) {
           console.log('[useAuth] boot fetchProfile attempt', i + 1);
-          const ok = await fetchProfile(u);
+          const ok = await fetchProfileBounded(u);
           console.log('[useAuth] boot fetchProfile attempt', i + 1, '→', ok);
           if (ok) break;
           await new Promise<void>((r) => setTimeout(r, 600));
         }
       }
+      // Work done — now release the safety net and lift the splash.
+      clearTimeout(safetyTimer);
       setReady(true);
       console.log('[useAuth] boot DONE setReady(true)', { reason });
     };
@@ -177,12 +189,19 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
       }
       if (ses?.user) {
         setUser(ses.user);
-        for (let i = 0; i < 3; i++) {
-          const ok = await fetchProfile(ses.user);
-          if (ok) break;
-          await new Promise<void>((r) => setTimeout(r, 600));
+        // Skip the fetchProfile loop when boot has already completed it.
+        // Otherwise INITIAL_SESSION triggers a duplicate fetch that races
+        // boot's own fetch and contributes to Supabase auth-lock contention.
+        if (!booted) {
+          for (let i = 0; i < 3; i++) {
+            const ok = await fetchProfileBounded(ses.user);
+            if (ok) break;
+            await new Promise<void>((r) => setTimeout(r, 600));
+          }
+          booted = true;
+          clearTimeout(safetyTimer);
+          setReady(true);
         }
-        if (!booted) { booted = true; clearTimeout(safetyTimer); setReady(true); }
         if (evt === 'SIGNED_IN' && typeof window !== 'undefined' && window.location.hash) {
           window.history.replaceState(null, '', window.location.pathname);
         }
