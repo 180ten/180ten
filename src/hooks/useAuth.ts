@@ -59,14 +59,22 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
 
   /** Returns true on success, false if all paths failed (e.g., network/RLS error). */
   const fetchProfile = useCallback(async (u: User): Promise<boolean> => {
+    console.log('[useAuth] fetchProfile ENTER', { uid: u.id });
+    const t0 = Date.now();
     try {
-      // Narrow column list — skips heavy jsonb / blob columns that aren't read
-      // before SplashScreen lifts. Every consumer of `profile` reads only the
-      // fields below (audited 2026-05-09): id, email, name, plan,
-      // plan_expires_at, role. Other tables/queries fetch what they need.
+      // BISECT: temporarily reverted to select('*') to rule out narrowing as
+      // cause of post-deploy SplashScreen hang. Restore narrow list once
+      // root-cause is confirmed.
       const r = await sb.from('profiles')
-        .select('id, email, name, plan, plan_expires_at, role')
+        .select('*')
         .eq('id', u.id).single();
+      console.log('[useAuth] fetchProfile QUERY', {
+        elapsedMs: Date.now() - t0,
+        hasData: !!r.data,
+        errorCode: r.error?.code ?? null,
+        errorMessage: r.error?.message ?? null,
+        dataKeys: r.data ? Object.keys(r.data) : null,
+      });
       if (r.data) {
         const data = r.data as Profile & { plan_expires_at?: string | null };
         // Tự động hạ về 'free' nếu plan có hạn và đã hết
@@ -80,10 +88,12 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
               .update({ plan: 'free', plan_expires_at: null })
               .eq('id', u.id);
             setProfile({ ...data, plan: 'free', plan_expires_at: null } as Profile);
+            console.log('[useAuth] fetchProfile EXIT (downgraded plan)', { elapsedMs: Date.now() - t0 });
             return true;
           }
         }
         setProfile(data as Profile);
+        console.log('[useAuth] fetchProfile EXIT (ok)', { elapsedMs: Date.now() - t0 });
         return true;
       }
       // Row missing → create fallback so Nav shows full pill instead of "Đăng xuất only".
@@ -99,10 +109,13 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
           { id: u.id, email: u.email, name: fallback.name, plan: 'free' },
           { onConflict: 'id', ignoreDuplicates: true }
         );
-      } catch { /* ignore upsert failure — profile state already set */ }
+      } catch (upErr) {
+        console.warn('[useAuth] fetchProfile upsert fallback failed:', upErr);
+      }
+      console.log('[useAuth] fetchProfile EXIT (fallback)', { elapsedMs: Date.now() - t0 });
       return true;
     } catch (e) {
-      console.warn('[useAuth] fetchProfile failed:', e);
+      console.warn('[useAuth] fetchProfile THREW:', e, { elapsedMs: Date.now() - t0 });
       return false;
     }
   }, []);
@@ -112,32 +125,45 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
   }, [user, fetchProfile]);
 
   useEffect(() => {
+    console.log('[useAuth] effect MOUNT');
     cleanStaleSession();
 
     let booted = false;
-    const safetyTimer = setTimeout(() => { if (!booted) { booted = true; setReady(true); } }, 6000);
+    const safetyTimer = setTimeout(() => {
+      if (!booted) {
+        console.warn('[useAuth] safetyTimer FIRED at 6s — boot hung, forcing ready=true');
+        booted = true;
+        setReady(true);
+      }
+    }, 6000);
 
-    const boot = async (u: User | null) => {
+    const boot = async (u: User | null, reason: string) => {
+      console.log('[useAuth] boot ENTER', { reason, hasUser: !!u, alreadyBooted: booted });
       if (booted) return;
       booted = true;
       clearTimeout(safetyTimer);
       if (u) {
         setUser(u);
         for (let i = 0; i < 3; i++) {
+          console.log('[useAuth] boot fetchProfile attempt', i + 1);
           const ok = await fetchProfile(u);
+          console.log('[useAuth] boot fetchProfile attempt', i + 1, '→', ok);
           if (ok) break;
           await new Promise<void>((r) => setTimeout(r, 600));
         }
       }
       setReady(true);
+      console.log('[useAuth] boot DONE setReady(true)', { reason });
     };
 
     const localSession = getSessionFromStorage();
+    console.log('[useAuth] localStorage session present?', !!localSession?.user);
     if (localSession?.user) {
-      boot(localSession.user as User);
+      boot(localSession.user as User, 'localStorage');
     }
 
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (evt, ses) => {
+      console.log('[useAuth] onAuthStateChange', { evt, hasSession: !!ses, booted });
       if (evt === 'SIGNED_OUT') {
         setUser(null); setProfile(null);
         if (!booted) { booted = true; clearTimeout(safetyTimer); setReady(true); }
@@ -165,20 +191,25 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
 
     (async () => {
       try {
+        console.log('[useAuth] getSession race START');
         const s = await Promise.race([
           sb.auth.getSession(),
           new Promise<{ data: { session: null } }>((r) => setTimeout(() => r({ data: { session: null } }), 3000)),
         ]);
+        console.log('[useAuth] getSession race RESULT', { hasSession: !!s.data?.session?.user });
         if (s.data?.session?.user) {
-          await boot(s.data.session.user);
+          await boot(s.data.session.user, 'getSession');
         } else {
           const hasToken = typeof window !== 'undefined' &&
             (window.location.hash.includes('access_token') ||
              window.location.hash.includes('type=signup') ||
              window.location.search.includes('code='));
-          if (!hasToken) await boot(null);
+          if (!hasToken) await boot(null, 'getSession-empty');
         }
-      } catch { await boot(null); }
+      } catch (e) {
+        console.warn('[useAuth] getSession race threw:', e);
+        await boot(null, 'getSession-throw');
+      }
     })();
 
     return () => { clearTimeout(safetyTimer); subscription.unsubscribe(); };
