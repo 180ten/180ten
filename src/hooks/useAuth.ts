@@ -60,7 +60,13 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
   /** Returns true on success, false if all paths failed (e.g., network/RLS error). */
   const fetchProfile = useCallback(async (u: User): Promise<boolean> => {
     try {
-      const r = await sb.from('profiles').select('*').eq('id', u.id).single();
+      // Narrow column list — skips heavy jsonb / blob columns that aren't read
+      // before SplashScreen lifts. Every consumer of `profile` reads only the
+      // fields below (audited 2026-05-09): id, email, name, plan,
+      // plan_expires_at, role. Other tables/queries fetch what they need.
+      const r = await sb.from('profiles')
+        .select('id, email, name, plan, plan_expires_at, role')
+        .eq('id', u.id).single();
       if (r.data) {
         const data = r.data as Profile & { plan_expires_at?: string | null };
         // Tự động hạ về 'free' nếu plan có hạn và đã hết

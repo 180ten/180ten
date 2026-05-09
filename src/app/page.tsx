@@ -101,30 +101,75 @@ export default function Home() {
 
   // ── Dashboard ──
   const dash = useDashboard(profile);
-  // Load lịch sử cho cả Dashboard, Mock Test và Home — mọi nơi cần
-  // dash.results/dash.localResults để hiển thị stats hoặc danh sách. Trước
-  // đây chỉ load ở tab "dashboard" → vào MockTest sau khi refresh sẽ thấy
-  // 0 đề / lịch sử trống dù localStorage có dữ liệu.
+  // Lazy: only fetch when user opens MockTest (needs userStats) or Dashboard
+  // (needs results/skill chart). HomeTab is independent — it reads hsUsers /
+  // hsExams only, never dash.*. Loading once per profile avoids repeated
+  // exam_results queries on every tab toggle.
+  const dashLoadedForProfile = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (activeTab !== "dashboard" && activeTab !== "mocktest" && activeTab !== "home") return;
+    if (activeTab !== "dashboard" && activeTab !== "mocktest") return;
+    const currentProfileId = profile?.id ?? null;
+    if (dashLoadedForProfile.current === currentProfileId) return;
+    dashLoadedForProfile.current = currentProfileId;
     const t = setTimeout(() => { void dash.loadDashboard(); }, 0);
     return () => clearTimeout(t);
-  }, [activeTab, profile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Hero stats (Supabase counts) ──
-  const [hsUsers, setHsUsers] = useState("—");
-  const [hsExams, setHsExams] = useState("—");
+  // Cached in localStorage for 10 minutes — these are slow-moving counters
+  // (total users + total published exams) and the home banner doesn't need
+  // them fresh every page-load.
+  const HERO_STATS_KEY = "jlptbro-hero-stats";
+  const HERO_STATS_TTL_MS = 10 * 60 * 1000;
+
+  function readHeroCache(): { users?: string; exams?: string } | null {
+    try {
+      const raw = localStorage.getItem(HERO_STATS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { users?: string; exams?: string; cachedAt?: number };
+      if (!parsed.cachedAt || Date.now() - parsed.cachedAt > HERO_STATS_TTL_MS) return null;
+      return { users: parsed.users, exams: parsed.exams };
+    } catch { return null; }
+  }
+  function writeHeroCache(users: string, exams: string) {
+    try {
+      localStorage.setItem(HERO_STATS_KEY, JSON.stringify({ users, exams, cachedAt: Date.now() }));
+    } catch { /* quota exceeded — ignore */ }
+  }
+
+  const cached = typeof window !== "undefined" ? readHeroCache() : null;
+  const [hsUsers, setHsUsers] = useState(cached?.users ?? "—");
+  const [hsExams, setHsExams] = useState(cached?.exams ?? "—");
+
   useEffect(() => {
-    // Đếm tổng user qua RPC bypass RLS (cần SQL function get_total_users)
+    // Skip network calls if cache is still fresh — avoids two RPC round-trips
+    // on every home-page mount.
+    if (readHeroCache()) return;
+
+    let usersStr = "";
+    let examsStr = "";
+    const persist = () => {
+      if (usersStr && examsStr) writeHeroCache(usersStr, examsStr);
+    };
+
     sb.rpc("get_total_users")
       .then(({ data, error }) => {
         if (error) {
           console.warn("[home] get_total_users failed, fallback to count:", error.message);
-          // Fallback: dùng count thường (sẽ bị RLS chặn nếu anon)
           return sb.from("profiles").select("*", { count: "exact", head: true })
-            .then(({ count }) => { if (count != null) setHsUsers(count.toLocaleString("vi")); });
+            .then(({ count }) => {
+              if (count != null) {
+                usersStr = count.toLocaleString("vi");
+                setHsUsers(usersStr);
+                persist();
+              }
+            });
         }
-        if (data != null) setHsUsers(Number(data).toLocaleString("vi"));
+        if (data != null) {
+          usersStr = Number(data).toLocaleString("vi");
+          setHsUsers(usersStr);
+          persist();
+        }
       });
 
     sb.rpc("get_total_exams")
@@ -132,9 +177,19 @@ export default function Home() {
         if (error) {
           console.warn("[home] get_total_exams failed, fallback to count:", error.message);
           return sb.from("exams").select("*", { count: "exact", head: true }).eq("is_published", true)
-            .then(({ count }) => { if (count != null) setHsExams(String(count)); });
+            .then(({ count }) => {
+              if (count != null) {
+                examsStr = String(count);
+                setHsExams(examsStr);
+                persist();
+              }
+            });
         }
-        if (data != null) setHsExams(String(data));
+        if (data != null) {
+          examsStr = String(data);
+          setHsExams(examsStr);
+          persist();
+        }
       });
   }, []);
 
