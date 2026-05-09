@@ -31,7 +31,7 @@ export default function HomeTab({ onSwitchTab, onOpenInfoModal, hsUsers, hsExams
           </div>
           <div className="hero-mascot">
             <Image
-              src="/images/hero-mascot-v3.svg"
+              src="/mascot-home.svg"
               alt="180ten mascot — chim cánh cụt đọc sách JLPT"
               width={520}
               height={430}
