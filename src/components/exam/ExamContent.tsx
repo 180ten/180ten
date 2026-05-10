@@ -162,23 +162,8 @@ function parseExampleStrs(examples: unknown): string[] {
   }).filter(Boolean);
 }
 
-function AutoVocabBox({
-  words, onAddToAnki,
-}: {
-  words: string[];
-  onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
-}) {
+function AutoVocabBox({ words }: { words: string[] }) {
   const [entries, setEntries] = useState<VocabEntry[] | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  const toggle = (word: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(word)) next.delete(word);
-      else next.add(word);
-      return next;
-    });
-  };
 
   // Stable cache key — order doesn't matter, but de-dup happens upstream
   const stable = words.join("|");
@@ -203,57 +188,23 @@ function AutoVocabBox({
   }, [stable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (words.length === 0) return null;
+  if (entries === null)        return <div className="auto-vocab-empty">Đang tải...</div>;
+  if (entries.length === 0)    return <div className="auto-vocab-empty">Không tìm thấy từ trong từ điển.</div>;
 
+  // Each row carries `vocab-tag` so the document-level click delegation in
+  // ExamContent opens the same VocabTagPopup as inline tags. No local state.
   return (
-    <div className="auto-vocab-box">
-      {entries === null ? (
-        <div className="auto-vocab-empty">Đang tải...</div>
-      ) : entries.length === 0 ? (
-        <div className="auto-vocab-empty">Không tìm thấy từ trong từ điển.</div>
-      ) : (
-        <div className="auto-vocab-grid">
-          {entries.map((e) => {
-            const meaning = e.meaning ?? "";
-            const cut     = shortMeaningForCard(meaning);
-            const examples = parseExampleStrs(e.examples);
-            const wasCut  = meaning.trim().length > cut.length;
-            const hasMore = wasCut || examples.length > 0;
-            const isOpen  = expanded.has(e.word);
-            return (
-              <div key={e.word} className={`auto-vocab-item${isOpen ? " expanded" : ""}`}>
-                <span className="av-word">{e.word}</span>
-                {e.reading && <span className="av-reading">{e.reading}</span>}
-                {e.word_type && <span className="av-type">{e.word_type}</span>}
-                {meaning && (
-                  <div className="av-meaning" style={isOpen ? { whiteSpace: "pre-wrap" } : undefined}>
-                    {isOpen ? meaning : cut}
-                  </div>
-                )}
-                {isOpen && examples.length > 0 && (
-                  <div className="av-examples">
-                    {examples.map((ex, i) => (
-                      <div key={i} className="av-example-line">{ex}</div>
-                    ))}
-                  </div>
-                )}
-                {hasMore && (
-                  <button type="button" className="av-expand-btn" onClick={() => toggle(e.word)}>
-                    {isOpen ? "Rút gọn ▴" : "Xem thêm ▾"}
-                  </button>
-                )}
-                {onAddToAnki && (
-                  <QuickAddBtn onAdd={() => onAddToAnki({
-                    word:      e.word,
-                    reading:   e.reading ?? "",
-                    meaning:   e.meaning ?? "",
-                    word_type: e.word_type ?? undefined,
-                  })} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div className="auto-vocab-list">
+      {entries.map((e) => {
+        const cut = shortMeaningForCard(e.meaning ?? "");
+        return (
+          <div key={e.word} className="vocab-tag av-list-item" data-word={e.word}>
+            <span className="av-list-word">{e.word}</span>
+            <span className="av-list-sep">:</span>
+            <span className="av-list-meaning">{cut || (e.meaning ?? "—")}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -299,11 +250,13 @@ function VocabTagPopup({
 }) {
   const [entry, setEntry] = useState<VocabEntry | null | undefined>(undefined);
   const [addState, setAddState] = useState<"idle" | "loading" | "done">("idle");
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setEntry(undefined);
     setAddState("idle");
+    setExpanded(false);
     void lookupVocab(word, sb).then((e) => { if (!cancelled) setEntry(e); });
     return () => { cancelled = true; };
   }, [word]);
@@ -326,21 +279,11 @@ function VocabTagPopup({
     setTimeout(() => { setAddState("idle"); onClose(); }, 1500);
   }
 
-  // examples can be string[] or {jp,vi}[] — show first 2.
-  const exampleStrs: string[] = (() => {
-    const arr = Array.isArray(entry?.examples) ? (entry!.examples as unknown[]) : [];
-    return arr.slice(0, 2).map((e) => {
-      if (typeof e === "string") return e;
-      if (e && typeof e === "object") {
-        const o = e as { jp?: string; vi?: string };
-        return o.vi ? `${o.jp ?? ""} → ${o.vi}` : (o.jp ?? "");
-      }
-      return "";
-    }).filter(Boolean);
-  })();
-
-  const meaning = entry?.meaning ?? "";
-  const { short: mShort, lines: mLines } = meaning ? parseMeaning(meaning) : { short: "", lines: [] };
+  const meaning  = entry?.meaning ?? "";
+  const cut      = shortMeaningForCard(meaning);
+  const examples = parseExampleStrs(entry?.examples);
+  const wasCut   = meaning.trim().length > cut.length;
+  const hasMore  = wasCut || examples.length > 0;
 
   return createPortal(
     <div
@@ -351,6 +294,7 @@ function VocabTagPopup({
       <button className="cp-close" onClick={onClose}>×</button>
       <div className="cp-word">{entry?.word ?? word}</div>
       {entry?.reading && <div className="cp-reading">{entry.reading}</div>}
+      {entry?.han_viet && <div className="cp-hanviet">{entry.han_viet}</div>}
       {entry?.word_type && (
         <div style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, background: "#fff0e8", color: "#f26419", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
           {entry.word_type}
@@ -361,23 +305,21 @@ function VocabTagPopup({
       {entry && (
         <>
           {meaning && (
-            <>
-              <div className="cp-meaning" style={{ fontSize: 15, fontWeight: 800 }}>{mShort}</div>
-              {mLines.length > 0 && (
-                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-                  {mLines.map((l, i) => (
-                    <div key={i} style={{ fontSize: 13, lineHeight: 1.65, marginBottom: NUM_MARKS.test(l[0] ?? "") ? 4 : 2 }}>{l}</div>
-                  ))}
-                </div>
-              )}
-            </>
+            <div className="cp-meaning" style={expanded ? { whiteSpace: "pre-wrap", fontSize: 13, fontWeight: 600 } : { fontSize: 13, fontWeight: 600 }}>
+              {expanded ? meaning : cut}
+            </div>
           )}
-          {exampleStrs.length > 0 && (
-            <div style={{ marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 12, color: "var(--muted)" }}>
-              {exampleStrs.map((ex, i) => (
-                <div key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{ex}</div>
+          {expanded && examples.length > 0 && (
+            <div className="cp-examples">
+              {examples.map((ex, i) => (
+                <div key={i} className="cp-example-line">{ex}</div>
               ))}
             </div>
+          )}
+          {hasMore && (
+            <button type="button" className="cp-expand-btn" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Rút gọn ▴" : "Xem thêm ▾"}
+            </button>
           )}
           {onAddToAnki && (
             <button
@@ -514,7 +456,7 @@ function ExplainPanel({
                       </div>
                     )}
                     {taggedWords.length > 0 && (
-                      <AutoVocabBox words={taggedWords} onAddToAnki={onAddToAnki} />
+                      <AutoVocabBox words={taggedWords} />
                     )}
                   </>
                 : <span className="explain-empty">Chưa có từ vựng.</span>

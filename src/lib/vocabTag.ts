@@ -47,13 +47,16 @@ export function stripVocabTags(text: string): string {
 export interface VocabEntry {
   word:      string;
   reading:   string | null;
+  han_viet:  string | null;
   word_type: string | null;
   meaning:   string | null;
   examples:  unknown;
   cachedAt:  number;
 }
 
-const LS_KEY = "jlptbro-vocab-tag-cache-v1";
+// v2 — added han_viet field. Bumping invalidates older cached rows on first
+// load so they get refetched with the new column.
+const LS_KEY = "jlptbro-vocab-tag-cache-v2";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 type LocalCache = Record<string, VocabEntry>;
 
@@ -76,14 +79,15 @@ function writeLocal(cache: LocalCache) {
 async function fetchFromDb(word: string, sb: SupabaseClient): Promise<VocabEntry | null> {
   const { data, error } = await sb
     .from("vocabulary_library")
-    .select("word, reading, word_type, meaning, examples")
+    .select("word, reading, han_viet, word_type, meaning, examples")
     .eq("word", word)
     .maybeSingle();
   if (error || !data) return null;
-  const row = data as { word: string; reading?: string | null; word_type?: string | null; meaning?: string | null; examples?: unknown };
+  const row = data as { word: string; reading?: string | null; han_viet?: string | null; word_type?: string | null; meaning?: string | null; examples?: unknown };
   return {
     word:      row.word,
     reading:   row.reading   ?? null,
+    han_viet:  row.han_viet  ?? null,
     word_type: row.word_type ?? null,
     meaning:   row.meaning   ?? null,
     examples:  row.examples  ?? null,
@@ -163,7 +167,7 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
 
   const { data, error } = await sb
     .from("vocabulary_library")
-    .select("word, reading, word_type, meaning, examples")
+    .select("word, reading, han_viet, word_type, meaning, examples")
     .in("word", missing);
 
   if (error || !data) {
@@ -172,10 +176,11 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
   }
 
   const found = new Set<string>();
-  for (const row of data as { word: string; reading?: string|null; word_type?: string|null; meaning?: string|null; examples?: unknown }[]) {
+  for (const row of data as { word: string; reading?: string|null; han_viet?: string|null; word_type?: string|null; meaning?: string|null; examples?: unknown }[]) {
     const entry: VocabEntry = {
       word:      row.word,
       reading:   row.reading   ?? null,
+      han_viet:  row.han_viet  ?? null,
       word_type: row.word_type ?? null,
       meaning:   row.meaning   ?? null,
       examples:  row.examples  ?? null,
