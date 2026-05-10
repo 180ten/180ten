@@ -896,28 +896,28 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 /* ── Vocab tag popup: card layout per mockup ──────────────────────────── */
 /* No `.chip-popup` shared styles — this popup carries its own background,
    padding, shadow, and width constraints. Position/left/top set inline. */
-.vocab-tag-popup{background:#fff;border-radius:20px;padding:20px;min-width:280px;max-width:320px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.15);color:#1a1a2e;}
-.vocab-tag-popup .cp-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;background:#f0f0f0;border:none;cursor:pointer;font-size:16px;color:#888;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}
+.vocab-tag-popup{background:#fff;border-radius:14px;padding:12px 14px;min-width:200px;max-width:240px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.15);color:#1a1a2e;}
+.vocab-tag-popup .cp-close{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:#f0f0f0;border:none;cursor:pointer;font-size:11px;color:#888;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}
 .vocab-tag-popup .cp-close:hover{background:#e5e5e5;color:#555;}
-.vocab-tag-popup .cp-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding-right:40px;}
-.vocab-tag-popup .cp-word{font-size:32px;font-weight:800;font-family:'Noto Sans JP',sans-serif;color:#1a1a2e;margin-bottom:0;padding-right:0;line-height:1.15;}
-.vocab-tag-popup .cp-type-badge{background:#fff0e8;color:#f26419;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
-.vocab-tag-popup .cp-sub{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
-.vocab-tag-popup .cp-reading{font-size:15px;color:#4a90d9;font-family:'Noto Sans JP',sans-serif;font-weight:500;margin-bottom:0;}
-.vocab-tag-popup .cp-sub-sep{color:#ddd;font-size:14px;}
-.vocab-tag-popup .cp-hanviet{font-size:14px;color:#aaa;font-style:normal;letter-spacing:.05em;margin-bottom:0;text-transform:uppercase;}
-.vocab-tag-popup .cp-divider{height:1px;background:#eee;margin-bottom:14px;}
-.vocab-tag-popup .cp-short{border-left:3px solid #f26419;padding-left:10px;font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:16px;line-height:1.5;}
-.vocab-tag-popup .cp-full{font-size:13px;color:#666;line-height:1.7;margin-bottom:14px;white-space:pre-wrap;}
-.vocab-tag-popup .cp-numbered{margin-bottom:14px;}
-.vocab-tag-popup .cp-numbered-item{font-size:13px;color:#666;line-height:1.7;margin-bottom:6px;}
+.vocab-tag-popup .cp-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:28px;}
+.vocab-tag-popup .cp-word{font-size:20px;font-weight:800;font-family:'Noto Sans JP',sans-serif;color:#1a1a2e;margin-bottom:0;padding-right:0;line-height:1.15;}
+.vocab-tag-popup .cp-type-badge{background:#fff0e8;color:#f26419;font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
+.vocab-tag-popup .cp-sub{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.vocab-tag-popup .cp-reading{font-size:12px;color:#4a90d9;font-family:'Noto Sans JP',sans-serif;font-weight:500;margin-bottom:0;}
+.vocab-tag-popup .cp-sub-sep{color:#ddd;font-size:11px;}
+.vocab-tag-popup .cp-hanviet{font-size:11px;color:#aaa;font-style:normal;letter-spacing:.05em;margin-bottom:0;text-transform:uppercase;}
+.vocab-tag-popup .cp-divider{height:1px;background:#eee;margin-bottom:8px;}
+.vocab-tag-popup .cp-short{border-left:2px solid #f26419;padding-left:7px;font-size:12px;font-weight:600;color:#1a1a2e;margin-bottom:10px;line-height:1.5;}
+.vocab-tag-popup .cp-full{font-size:11px;color:#666;line-height:1.65;margin-bottom:10px;white-space:pre-wrap;}
+.vocab-tag-popup .cp-numbered{margin-bottom:10px;}
+.vocab-tag-popup .cp-numbered-item{font-size:11px;color:#666;line-height:1.65;margin-bottom:5px;}
 .vocab-tag-popup .cp-numbered-item:last-child{margin-bottom:0;}
-.vocab-tag-popup .cp-examples{margin-bottom:14px;padding-top:8px;border-top:1px dashed #eee;font-size:12px;color:#888;}
-.vocab-tag-popup .cp-example-line{margin-bottom:4px;line-height:1.5;}
-.vocab-tag-popup .cp-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.vocab-tag-popup .cp-expand-btn{background:none;border:none;cursor:pointer;color:#f26419;font-weight:700;font-size:13px;display:flex;align-items:center;gap:5px;padding:0;font-family:inherit;}
+.vocab-tag-popup .cp-examples{margin-bottom:10px;padding-top:6px;border-top:1px dashed #eee;font-size:10px;color:#888;}
+.vocab-tag-popup .cp-example-line{margin-bottom:3px;font-size:10px;line-height:1.5;}
+.vocab-tag-popup .cp-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.vocab-tag-popup .cp-expand-btn{background:none;border:none;cursor:pointer;color:#f26419;font-weight:700;font-size:11px;display:flex;align-items:center;gap:4px;padding:0;font-family:inherit;}
 .vocab-tag-popup .cp-expand-btn:hover{text-decoration:underline;}
-.vocab-tag-popup .cp-anki-btn{display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;border:1.5px solid #f26419;background:#fff;color:#f26419;font-weight:700;font-size:13px;cursor:pointer;transition:background .15s;font-family:inherit;}
+.vocab-tag-popup .cp-anki-btn{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;border:1.5px solid #f26419;background:#fff;color:#f26419;font-weight:700;font-size:11px;cursor:pointer;transition:background .15s;font-family:inherit;}
 .vocab-tag-popup .cp-anki-btn:hover{background:#fff0e8;}
 .vocab-tag-popup .cp-anki-btn.added{background:#f26419;color:#fff;}
 .vocab-tag-popup .cp-anki-btn:disabled{opacity:.6;cursor:not-allowed;}
