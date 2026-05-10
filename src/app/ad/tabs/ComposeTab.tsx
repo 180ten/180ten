@@ -134,24 +134,77 @@ function getComposeTemplate(typeId: string, level: string) {
 }
 
 // ─── SHARED UI PRIMITIVES ────────────────────────────────────────
-function Inp({ value, onChange, placeholder, style }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties;
+// Insert 【】 at the current caret position of an Inp/Ta element and place the
+// caret between the two brackets. Uses the native value setter so React's
+// controlled <input>/<textarea> still picks up the change via its own onChange.
+function insertBrackets(el: HTMLInputElement | HTMLTextAreaElement | null) {
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end   = el.selectionEnd   ?? el.value.length;
+  const newVal = el.value.slice(0, start) + "【】" + el.value.slice(end);
+  const proto = el instanceof HTMLTextAreaElement
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setter?.call(el, newVal);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  requestAnimationFrame(() => {
+    el.focus();
+    el.selectionStart = start + 1;
+    el.selectionEnd   = start + 1;
+  });
+}
+function BracketBtn({ targetRef, style }: {
+  targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  style?: React.CSSProperties;
 }) {
-  const [f, setF] = useState(false);
   return (
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      style={{ ...iBase, borderColor: f ? C.accent : C.border2, ...style }}
-      onFocus={() => setF(true)} onBlur={() => setF(false)} />
+    <button
+      type="button"
+      className="insert-bracket-btn"
+      title="Chèn 【】 (đánh dấu từ vựng cho review)"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => insertBrackets(targetRef.current)}
+      style={style}
+    >
+      【】
+    </button>
   );
 }
-function Ta({ value, onChange, placeholder, rows = 3 }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
+function Inp({ value, onChange, placeholder, style, noBracketBtn }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties; noBracketBtn?: boolean;
 }) {
   const [f, setF] = useState(false);
-  return (
-    <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      rows={rows} style={{ ...taBase, borderColor: f ? C.accent : C.border2 }}
+  const ref = useRef<HTMLInputElement>(null);
+  const input = (
+    <input ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      style={{ ...iBase, borderColor: f ? C.accent : C.border2, ...(noBracketBtn ? {} : { flex: 1, minWidth: 0 }), ...style }}
       onFocus={() => setF(true)} onBlur={() => setF(false)} />
+  );
+  if (noBracketBtn) return input;
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
+      {input}
+      <BracketBtn targetRef={ref} />
+    </div>
+  );
+}
+function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; rows?: number; noBracketBtn?: boolean;
+}) {
+  const [f, setF] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const ta = (
+    <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      rows={rows} style={{ ...taBase, borderColor: f ? C.accent : C.border2, ...(noBracketBtn ? {} : { flex: 1, minWidth: 0 }) }}
+      onFocus={() => setF(true)} onBlur={() => setF(false)} />
+  );
+  if (noBracketBtn) return ta;
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+      {ta}
+      <BracketBtn targetRef={ref} />
+    </div>
   );
 }
 function RichTa({ value, onChange, placeholder, rows = 5 }: {
@@ -238,6 +291,7 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           ["U̲","Gạch chân",["__","__"]],
           ["⇥","Thụt đầu",["　　",""]],
           ["縦","Viết dọc từ trên xuống dưới",["[縦]","[/縦]"]],
+          ["【】","Đánh dấu từ vựng (review)",["【","】"]],
         ] as [string,string,[string,string]][]).map(([l,t,w]) => toolBtn(l, t, () => insert(w[0], w[1])))}
         {([
           ["左", "Căn trái", "left"],
@@ -729,8 +783,8 @@ function BunshoForm({ data, onChange, level }: { data: QData; onChange: (d: QDat
     <div>
       <FixedHeader text={getFixedHeaderText("bunsho", data as Record<string,string>, level)} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-        <Fl label="Số x (bắt đầu)" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="46" /></Fl>
-        <Fl label="Số y (kết thúc)" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="50" /></Fl>
+        <Fl label="Số x (bắt đầu)" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="46" noBracketBtn /></Fl>
+        <Fl label="Số y (kết thúc)" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="50" noBracketBtn /></Fl>
       </div>
       <Fl label="Đoạn văn" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 【từ】">
         <RichTa value={String(data.passage||"")} onChange={v => u("passage",v)} placeholder="Nội dung đoạn văn..." rows={7} />
@@ -776,8 +830,8 @@ function ReadingBase({ data, onChange, qPerPassage, multiPassage, typeId, level 
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       {needsXY && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-          <Fl label="Số x" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="例：46" /></Fl>
-          <Fl label="Số y" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="例：52" /></Fl>
+          <Fl label="Số x" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="例：46" noBracketBtn /></Fl>
+          <Fl label="Số y" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="例：52" noBracketBtn /></Fl>
         </div>
       )}
       {passages.map((p, pi) => (
@@ -891,12 +945,12 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
             <span style={{ fontSize: 12, color: C.purple, fontWeight: 700 }}>Câu {i+1}</span>
             {qs.length>1 && <button type="button" onClick={() => rmQ(i)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
-          <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} /></Fl>
+          <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
           <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uQ(i,"correct",v)} placeholder="正解" /></Fl>
           <WrongAnswers values={(q.wrongs as string[])||["","",""]} onChange={v => uQ(i,"wrongs",v)} count={wrongCount} />
           {allowImage && (
             <Fl label="Ảnh minh hoạ (URL)" hint="N4/N5: 課題・発話表現 | N3: 発話表現のみ">
-              <Inp value={String(q.imageUrl||"")} onChange={v => uQ(i,"imageUrl",v)} placeholder="https://...jpg/png" />
+              <Inp value={String(q.imageUrl||"")} onChange={v => uQ(i,"imageUrl",v)} placeholder="https://...jpg/png" noBracketBtn />
               {q.imageUrl ? <img src={String(q.imageUrl)} alt="preview" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 140, objectFit: "contain", border: `1px solid ${C.border2}`, borderRadius: 8, background: C.surface, padding: 4 }} /> : null}
             </Fl>
           )}
@@ -927,7 +981,7 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
             <span style={{ fontSize: 12, color: C.purple, fontWeight: 700 }}>Câu {i+1}</span>
             {qs.length>1 && <button type="button" onClick={() => rmQ(i)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
-          <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} /></Fl>
+          <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
           <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uQ(i,"correct",v)} placeholder="正解" /></Fl>
           <Fl label="Đáp án sai" hint="2 lựa chọn">
             {[0,1].map(si => (
@@ -964,7 +1018,7 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
         {isN1OrN2Level(level) && (
           <Fl label="Câu hỏi lớn"><Ta value={String(t1.mainQuestion||"")} onChange={v => ut1("mainQuestion",v)} placeholder="どちらがよいと思いますか。" rows={2} /></Fl>
         )}
-        <Fl label="Số thứ tự trong đề"><Inp value={String(t1.orderNum||"")} onChange={v => ut1("orderNum",v)} placeholder="例：1" style={{ width: 120 }} /></Fl>
+        <Fl label="Số thứ tự trong đề"><Inp value={String(t1.orderNum||"")} onChange={v => ut1("orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
         <Fl label="Đáp án đúng"><Inp value={String(t1.correct||"")} onChange={v => ut1("correct",v)} placeholder="正解" /></Fl>
         <WrongAnswers values={(t1.wrongs as string[])||["","",""]} onChange={v => ut1("wrongs",v)} count={3} />
         <ExplainFields data={t1} onChange={(k,v) => ut1(k,v)} />
@@ -975,7 +1029,7 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
         {(t2.questions||[mkLTQ(),mkLTQ()]).map((q,i) => (
           <div key={i} style={{ border: `1px solid ${C.border2}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
             <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 10 }}>Câu {i+1}</div>
-            <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uT2Q(i,"orderNum",v)} placeholder="例：2" style={{ width: 120 }} /></Fl>
+            <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uT2Q(i,"orderNum",v)} placeholder="例：2" style={{ width: 120 }} noBracketBtn /></Fl>
             <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uT2Q(i,"correct",v)} placeholder="正解" /></Fl>
             <WrongAnswers values={(q.wrongs as string[])||["","",""]} onChange={v => uT2Q(i,"wrongs",v)} count={3} />
             <ExplainFields data={q} onChange={(k,v) => uT2Q(i,k,v)} />
@@ -1003,7 +1057,7 @@ function BjtImageMcForm({ typeId, data, onChange, showQuestion, part1Tip }: {
         </div>
       )}
       {showQuestion && <Fl label="Câu hỏi (質問)"><Ta value={String(data.question||"")} onChange={v=>u("question",v)} rows={3} placeholder="Nhập câu hỏi…" /></Fl>}
-      <Fl label="Link ảnh / 資料"><Inp value={String(data.imageUrl||"")} onChange={v=>u("imageUrl",v)} placeholder="https://..." /></Fl>
+      <Fl label="Link ảnh / 資料"><Inp value={String(data.imageUrl||"")} onChange={v=>u("imageUrl",v)} placeholder="https://..." noBracketBtn /></Fl>
       {img && /^https?:\/\//i.test(img) && <div style={{ marginBottom: 16 }}><img src={img} alt="" style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 8, border: `1px solid ${C.border2}` }} /></div>}
       {isSogo ? (
         <div style={{ marginBottom: 16 }}>

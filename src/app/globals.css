@@ -881,6 +881,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag:hover{background:#fff0e8;}
 .vocab-tag:active{background:#ffe0cc;}
 
+/* ── 【】 insert button (compose form) ── */
+.insert-bracket-btn{font-size:11px;font-family:'Noto Sans JP',sans-serif;padding:2px 7px;border-radius:5px;border:1px solid #e0d9d0;background:#faf9f7;cursor:pointer;color:#f26419;font-weight:700;transition:background .15s;line-height:1.4;flex:none;}
+.insert-bracket-btn:hover{background:#fff0e8;border-color:#f26419;}
+
 /* ── Explain panel ── */
 .explain-btn{display:none;width:100%;margin-top:10px;padding:8px 14px;border-radius:9px;border:1px solid var(--border2);background:var(--surface);cursor:pointer;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-size:12px;font-weight:600;color:var(--muted);text-align:left;transition:all .15s;}
 .explain-btn:hover,.explain-btn.open{border-color:var(--accent);color:var(--accent);background:#fef0ec;}
