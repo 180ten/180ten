@@ -1115,6 +1115,20 @@ export default function ExamContent({
         left,
         zIndex: 9999,
       };
+
+      // Diagnostic log — share these values if popup positions wrong.
+      // Suspicious values: rect.* all 0 → trigger detached/hidden;
+      //                    final left/top tiny while rect.left/top large → CSS override.
+      console.log("[vocab-popup] click", {
+        word,
+        rect: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right, w: rect.width, h: rect.height },
+        win: { w: window.innerWidth, h: window.innerHeight, scrollY: window.scrollY, scrollX: window.scrollX },
+        showAbove,
+        popupStyle,
+        tagTagName: tag.tagName,
+        tagClass: tag.className,
+      });
+
       setVocabPopup({ word, popupStyle, showAbove, key: Date.now() });
     };
 
