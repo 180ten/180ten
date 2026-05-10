@@ -176,7 +176,6 @@ function AutoVocabBox({
 
   return (
     <div className="auto-vocab-box">
-      <div className="auto-vocab-title">📖 Từ vựng từ bài</div>
       {entries === null ? (
         <div className="auto-vocab-empty">Đang tải...</div>
       ) : entries.length === 0 ? (
@@ -367,11 +366,13 @@ const MemoChoiceBtn = memo(ChoiceBtn);
 
 // ── Explain panel ──
 function ExplainPanel({
-  qKey, data, onAddToAnki,
+  qKey, data, onAddToAnki, taggedWords = [],
 }: {
   qKey: string;
   data: SubQuestion | Record<string, unknown>;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+  /** Words extracted from 【】 in passage + question stem (review mode). */
+  taggedWords?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState(0);
@@ -420,21 +421,28 @@ function ExplainPanel({
                 : <span className="explain-empty">Chưa có nội dung.</span>
             )}
             {tab === 1 && (
-              vocabItems.length > 0
-                ? <div style={{ lineHeight: 2.2 }}>
-                    {vocabItems.map((v, i) => (
-                      <span key={i} className="vocab-chip" onClick={(e) => openPopup("vocab", v, e)}>
-                        <strong style={{ fontSize: 14 }}>{v.word}</strong>
-                        {v.reading && <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 500, marginLeft: 3 }}>({v.reading})</span>}
-                        <span style={{ fontSize: 11, marginLeft: 5, borderLeft: "1px solid var(--border2)", paddingLeft: 5 }}>
-                          {shortMeaning(v.meaning)}
-                        </span>
-                        {onAddToAnki && (
-                          <QuickAddBtn onAdd={() => onAddToAnki({ word: v.word, reading: v.reading ?? "", meaning: v.meaning })} />
-                        )}
-                      </span>
-                    ))}
-                  </div>
+              (vocabItems.length > 0 || taggedWords.length > 0)
+                ? <>
+                    {vocabItems.length > 0 && (
+                      <div style={{ lineHeight: 2.2 }}>
+                        {vocabItems.map((v, i) => (
+                          <span key={i} className="vocab-chip" onClick={(e) => openPopup("vocab", v, e)}>
+                            <strong style={{ fontSize: 14 }}>{v.word}</strong>
+                            {v.reading && <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 500, marginLeft: 3 }}>({v.reading})</span>}
+                            <span style={{ fontSize: 11, marginLeft: 5, borderLeft: "1px solid var(--border2)", paddingLeft: 5 }}>
+                              {shortMeaning(v.meaning)}
+                            </span>
+                            {onAddToAnki && (
+                              <QuickAddBtn onAdd={() => onAddToAnki({ word: v.word, reading: v.reading ?? "", meaning: v.meaning })} />
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {taggedWords.length > 0 && (
+                      <AutoVocabBox words={taggedWords} onAddToAnki={onAddToAnki} />
+                    )}
+                  </>
                 : <span className="explain-empty">Chưa có từ vựng.</span>
             )}
             {tab === 2 && (
@@ -538,11 +546,8 @@ function QBlock({
           ))}
         </div>
       )}
-      {submitted && taggedWords.length > 0 && (
-        <AutoVocabBox words={taggedWords} onAddToAnki={onAddToAnki} />
-      )}
       {submitted && explainData && (
-        <ExplainPanel qKey={qKey} data={explainData} onAddToAnki={onAddToAnki} />
+        <ExplainPanel qKey={qKey} data={explainData} onAddToAnki={onAddToAnki} taggedWords={taggedWords} />
       )}
     </div>
   );
