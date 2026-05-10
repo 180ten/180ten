@@ -259,7 +259,7 @@ function AutoVocabBox({
 type PopupAnchor = { top: number; bottom: number; left: number };
 function getPopupStyle(a: PopupAnchor): { style: React.CSSProperties; showAbove: boolean } {
   const popupH = 280;
-  const popupW = 260;
+  const popupW = 320; // matches CSS max-width — used for clamping `left`
   const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
   const winH = typeof window !== "undefined" ? window.innerHeight : 600;
   const spaceBelow = winH - a.bottom;
@@ -275,7 +275,7 @@ function getPopupStyle(a: PopupAnchor): { style: React.CSSProperties; showAbove:
     : Math.min(a.bottom + 8, winH - 40);
 
   return {
-    style: { position: "fixed", left, top, width: popupW, zIndex: 9999 },
+    style: { position: "fixed", left, top, zIndex: 9999 },
     showAbove,
   };
 }
@@ -326,17 +326,22 @@ function VocabTagPopup({
 
   return createPortal(
     <div
-      className={`chip-popup vocab-tag-popup ${showAbove ? "above" : "below"}`}
+      className={`vocab-tag-popup ${showAbove ? "above" : "below"}`}
       style={popupStyle}
       onClick={(e) => e.stopPropagation()}
     >
-      <button className="cp-close" onClick={onClose}>×</button>
+      <button className="cp-close" onClick={onClose} aria-label="Đóng">×</button>
       <div className="cp-header">
         <span className="cp-word">{entry?.word ?? word}</span>
-        {entry?.word_type && <span className="cp-type">{entry.word_type}</span>}
+        {entry?.word_type && <span className="cp-type-badge">{entry.word_type}</span>}
       </div>
-      {entry?.reading && <div className="cp-reading">{entry.reading}</div>}
-      {entry?.han_viet && <div className="cp-hanviet">{entry.han_viet}</div>}
+      {(entry?.reading || entry?.han_viet) && (
+        <div className="cp-sub">
+          {entry?.reading && <span className="cp-reading">{entry.reading}</span>}
+          {entry?.reading && entry?.han_viet && <span className="cp-sub-sep">|</span>}
+          {entry?.han_viet && <span className="cp-hanviet">{entry.han_viet}</span>}
+        </div>
+      )}
       {entry === undefined && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Đang tải...</div>}
       {entry === null && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Chưa có trong từ điển.</div>}
       {entry && (
@@ -359,20 +364,24 @@ function VocabTagPopup({
               ))}
             </div>
           )}
-          {hasMore && (
-            <button type="button" className="cp-expand-btn" onClick={() => setExpanded((v) => !v)}>
-              {expanded ? "Rút gọn ▴" : "Xem thêm ▾"}
-            </button>
-          )}
-          {onAddToAnki && (
-            <button
-              className={`cp-add-btn${addState === "done" ? " added" : ""}`}
-              disabled={addState === "loading"}
-              onClick={handleAdd}
-              style={{ marginTop: 10 }}
-            >
-              {addState === "done" ? "✓ Đã thêm" : addState === "loading" ? "..." : "＋ Thêm vào Anki"}
-            </button>
+          {(hasMore || onAddToAnki) && (
+            <div className="cp-footer">
+              {hasMore ? (
+                <button type="button" className="cp-expand-btn" onClick={() => setExpanded((v) => !v)}>
+                  {expanded ? "Rút gọn" : "Xem thêm"} <span aria-hidden>{expanded ? "∧" : "∨"}</span>
+                </button>
+              ) : <span aria-hidden />}
+              {onAddToAnki ? (
+                <button
+                  type="button"
+                  className={`cp-anki-btn${addState === "done" ? " added" : ""}`}
+                  disabled={addState === "loading"}
+                  onClick={handleAdd}
+                >
+                  {addState === "done" ? "✓ Đã thêm" : addState === "loading" ? "..." : "＋ Thêm vào Anki"}
+                </button>
+              ) : <span aria-hidden />}
+            </div>
           )}
         </>
       )}
