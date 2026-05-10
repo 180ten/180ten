@@ -150,6 +150,20 @@ function shortMeaningForCard(meaning: string, max = 40): string {
   return cut.length > max ? cut.slice(0, max) + "…" : cut;
 }
 
+// DB format: "Công ty - ① Công ty pháp nhân... ② Tập thể / nhóm người..."
+// Splits at the first " - " into shortM (gloss) and fullM (detail), then
+// sub-splits fullM on ①②③… markers if present.
+// (Distinct name from the file-level parseMeaning() used by ChipPopup.)
+function parseTagMeaning(meaning: string): { shortM: string; fullM: string; numbered: string[] } {
+  const dashIdx = meaning.indexOf(" - ");
+  const shortM = dashIdx >= 0 ? meaning.slice(0, dashIdx).trim() : meaning.trim();
+  const fullM  = dashIdx >= 0 ? meaning.slice(dashIdx + 3).trim() : "";
+  const numbered = fullM
+    ? fullM.split(/(?=[①②③④⑤⑥⑦⑧⑨⑩])/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  return { shortM, fullM, numbered };
+}
+
 function parseExampleStrs(examples: unknown): string[] {
   const arr = Array.isArray(examples) ? examples : [];
   return arr.map((e) => {
@@ -306,9 +320,7 @@ function VocabTagPopup({
   }
 
   const meaning  = entry?.meaning ?? "";
-  const parts    = meaning.split(" - ");
-  const shortM   = parts[0].trim();
-  const fullM    = parts.slice(1).join(" - ").trim();
+  const { shortM, fullM, numbered } = parseTagMeaning(meaning);
   const examples = parseExampleStrs(entry?.examples);
   const hasMore  = !!fullM || examples.length > 0;
 
@@ -331,7 +343,15 @@ function VocabTagPopup({
         <>
           {shortM && <div className="cp-divider" />}
           {shortM && <div className="cp-short">{shortM}</div>}
-          {expanded && fullM && <div className="cp-full">{fullM}</div>}
+          {expanded && fullM && (
+            numbered.length > 1
+              ? <div className="cp-numbered">
+                  {numbered.map((line, i) => (
+                    <div key={i} className="cp-numbered-item">{line}</div>
+                  ))}
+                </div>
+              : <div className="cp-full">{fullM}</div>
+          )}
           {expanded && examples.length > 0 && (
             <div className="cp-examples">
               {examples.map((ex, i) => (

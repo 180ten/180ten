@@ -903,6 +903,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag-popup .cp-divider{height:1px;background:#333;margin:8px 0;}
 .vocab-tag-popup .cp-short{font-size:13px;margin-bottom:6px;}
 .vocab-tag-popup .cp-full{font-size:12px;color:#ccc;line-height:1.7;margin-bottom:8px;white-space:pre-wrap;}
+.vocab-tag-popup .cp-numbered{margin-bottom:8px;}
+.vocab-tag-popup .cp-numbered-item{font-size:12px;color:#ccc;line-height:1.7;margin-bottom:6px;}
+.vocab-tag-popup .cp-numbered-item:last-child{margin-bottom:0;}
 .cp-expand-btn{display:inline-block;margin-top:8px;padding:2px 0;background:none;border:none;color:#f26419;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
 .cp-expand-btn:hover{text-decoration:underline;}
 .cp-examples{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);}
