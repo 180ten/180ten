@@ -253,29 +253,42 @@ function AutoVocabBox({
 // Reads from the 3-layer cache in lib/vocabTag (session → localStorage → DB).
 // Click opens; hover prefetches; click outside closes (handled by the parent).
 
-// Smart positioning — flips to "above" when there's not enough room below.
-// Uses position:fixed (viewport-relative) so it escapes any ancestor overflow
-// clipping. Coordinates therefore need NO scroll offsets.
+// Smart positioning — flips to "above" when there's not enough room below,
+// and clamps `maxHeight` so the popup never extends past the viewport edge
+// (was being clipped at the bottom when content expanded).
+//
+// Uses position:fixed (viewport-relative) + createPortal(document.body) so it
+// escapes any ancestor overflow / stacking context. No scroll offsets needed.
 type PopupAnchor = { top: number; bottom: number; left: number };
 function getPopupStyle(a: PopupAnchor): { style: React.CSSProperties; showAbove: boolean } {
-  const popupH = 280;
-  const popupW = 320; // matches CSS max-width — used for clamping `left`
+  const popupW = 240; // matches CSS max-width
+  const popupH = 240; // estimate for flip decision (collapsed popup ≈ this)
+  const margin = 12;
   const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
   const winH = typeof window !== "undefined" ? window.innerHeight : 600;
-  const spaceBelow = winH - a.bottom;
-  const spaceAbove = a.top;
+  const spaceBelow = winH - a.bottom - margin;
+  const spaceAbove = a.top - margin;
   const showAbove = spaceBelow < popupH && spaceAbove > spaceBelow;
 
   let left = a.left;
-  if (left + popupW > winW) left = winW - popupW - 12;
+  if (left + popupW > winW) left = winW - popupW - margin;
   if (left < 8) left = 8;
 
-  const top = showAbove
-    ? Math.max(8, a.top - popupH - 8)
-    : Math.min(a.bottom + 8, winH - 40);
+  // Cap maxHeight to whatever space the chosen side actually has so the popup
+  // can never extend past the top or bottom of the viewport. Internal scroll
+  // (`overflow-y: auto` in CSS) handles content longer than this.
+  let top: number;
+  let maxHeight: number;
+  if (showAbove) {
+    maxHeight = Math.max(120, spaceAbove);
+    top = Math.max(8, a.top - 8 - Math.min(popupH, maxHeight));
+  } else {
+    maxHeight = Math.max(120, spaceBelow);
+    top = a.bottom + 8;
+  }
 
   return {
-    style: { position: "fixed", left, top, zIndex: 9999 },
+    style: { position: "fixed", left, top, maxHeight, zIndex: 9999 },
     showAbove,
   };
 }
