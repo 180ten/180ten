@@ -8,7 +8,11 @@ import {
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
 import { getFixedHeaderText } from "@/app/ad/compose/composeConstants";
-import { renderVocabTags, lookupVocab, prefetchVocab, type VocabEntry } from "@/lib/vocabTag";
+import {
+  renderVocabTags, stripVocabTags, extractTaggedWords,
+  lookupVocab, lookupVocabBulk, prefetchVocab,
+  type VocabEntry,
+} from "@/lib/vocabTag";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -131,6 +135,76 @@ function ChipPopup({
       </button>
     </div>,
     document.body
+  );
+}
+
+// ── Auto-vocab box (review mode) ──────────────────────────────────────
+// For each question in review mode, scans the surrounding text (passage +
+// question stem) for 【...】 tags, bulk-fetches the matching vocabulary_library
+// rows in ONE query (`.in('word', words)`), and renders a grid card per word.
+function AutoVocabBox({
+  words, onAddToAnki,
+}: {
+  words: string[];
+  onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+}) {
+  const [entries, setEntries] = useState<VocabEntry[] | null>(null);
+
+  // Stable cache key — order doesn't matter, but de-dup happens upstream
+  const stable = words.join("|");
+
+  useEffect(() => {
+    if (words.length === 0) { setEntries([]); return; }
+    let cancelled = false;
+    void lookupVocabBulk(words, sb).then((map) => {
+      if (cancelled) return;
+      // Preserve original word order; drop entries with no DB match
+      const out: VocabEntry[] = [];
+      const seen = new Set<string>();
+      for (const w of words) {
+        if (seen.has(w)) continue;
+        seen.add(w);
+        const e = map.get(w);
+        if (e) out.push(e);
+      }
+      setEntries(out);
+    });
+    return () => { cancelled = true; };
+  }, [stable]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (words.length === 0) return null;
+
+  return (
+    <div className="auto-vocab-box">
+      <div className="auto-vocab-title">📖 Từ vựng từ bài</div>
+      {entries === null ? (
+        <div className="auto-vocab-empty">Đang tải...</div>
+      ) : entries.length === 0 ? (
+        <div className="auto-vocab-empty">Không tìm thấy từ trong từ điển.</div>
+      ) : (
+        <div className="auto-vocab-grid">
+          {entries.map((e) => {
+            const { short: mShort } = parseMeaning(e.meaning ?? "");
+            return (
+              <div key={e.word} className="auto-vocab-item">
+                <span className="av-word">{e.word}</span>
+                {e.reading && <span className="av-reading">{e.reading}</span>}
+                {e.word_type && <span className="av-type">{e.word_type}</span>}
+                {e.meaning && <div className="av-meaning">{mShort || e.meaning}</div>}
+                {onAddToAnki && (
+                  <QuickAddBtn onAdd={() => onAddToAnki({
+                    word:      e.word,
+                    reading:   e.reading ?? "",
+                    meaning:   e.meaning ?? "",
+                    word_type: e.word_type ?? undefined,
+                  })} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -398,23 +472,48 @@ function ExplainPanel({
 // ── Single question block ──
 function QBlock({
   qKey, num, qText, choices, qType, sideImageUrl, selectedIdx, correctIdx, submitted, onPick, explainData, onAddToAnki,
+  passageText,
 }: {
   qKey: string; num: number; qText: string; choices: string[]; qType: string;
   sideImageUrl: string; selectedIdx: number | undefined; correctIdx: number | undefined;
   submitted: boolean; onPick: (key: string, idx: number) => void;
   explainData?: SubQuestion | Record<string, unknown>;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+  /** Text of the parent passage (if any), used to derive auto-vocab in review. */
+  passageText?: string;
 }) {
   const sogoMc = qType === "bjt_1_3" || qType === "bjt_2_3";
   const nums = choices.length <= 3 ? NUMS.slice(0, 3) : NUMS;
   const hasSideImg = !!sideImageUrl;
+
+  // exam: strip 【】 entirely  / review: wrap in clickable spans
+  const renderedQText = qText
+    ? (submitted ? renderVocabTags(qText) : stripVocabTags(qText))
+    : "";
+
+  // Tagged words for the auto-vocab grid (review mode only). Combines parent
+  // passage + this sub-question's stem so each card surfaces its full context.
+  const taggedWords = useMemo(() => {
+    if (!submitted) return [] as string[];
+    const combined = `${passageText ?? ""}\n${qText ?? ""}`;
+    const all = extractTaggedWords(combined);
+    // Preserve order but de-dupe
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const w of all) {
+      const k = w.trim();
+      if (!k || seen.has(k)) continue;
+      seen.add(k); out.push(k);
+    }
+    return out;
+  }, [submitted, passageText, qText]);
 
   return (
     <div className={`q-block${hasSideImg ? " q-block-has-side-img" : ""}${sogoMc ? " q-bjt-sogo-mc" : ""}${submitted ? " exam-submitted" : ""}`} id={`qb-${qKey}`}>
       <div className="q-question-row">
         <div className="q-num">{num}.</div>
         {qText && (
-          <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQText(qText, qType) }} />
+          <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQText(renderedQText, qType) }} />
         )}
       </div>
       {hasSideImg ? (
@@ -439,6 +538,9 @@ function QBlock({
           ))}
         </div>
       )}
+      {submitted && taggedWords.length > 0 && (
+        <AutoVocabBox words={taggedWords} onAddToAnki={onAddToAnki} />
+      )}
       {submitted && explainData && (
         <ExplainPanel qKey={qKey} data={explainData} onAddToAnki={onAddToAnki} />
       )}
@@ -461,6 +563,7 @@ const MemoQBlock = memo(QBlock, (prev, next) =>
   prev.correctIdx === next.correctIdx &&
   prev.submitted === next.submitted &&
   prev.explainData === next.explainData &&
+  prev.passageText === next.passageText &&
   sameChoices(prev.choices, next.choices)
 );
 
@@ -524,7 +627,9 @@ const PassageBlock = memo(function PassageBlock({
 }) {
   const { body, notes } = splitPassageNotes(text);
   const density = getPassageDensity(body || text);
-  const prep = (s: string) => (applyTags ? renderRich(renderVocabTags(s)) : renderRich(s));
+  // applyTags === true  → review mode  → wrap 【】 in clickable spans
+  // applyTags === false → exam   mode  → strip 【】 entirely (plain text)
+  const prep = (s: string) => renderRich(applyTags ? renderVocabTags(s) : stripVocabTags(s));
 
   return (
     <div
@@ -664,6 +769,7 @@ function ReadingContent({
           renderedPassageCount++;
         }
       });
+      const togoPassageText = passageStrs.filter(Boolean).join("\n");
       const right: React.ReactNode[] = sharedQs.map((sq, i) => {
         const key = `${id}-q-${i}`;
         const choices = getChoices(sq);
@@ -671,7 +777,7 @@ function ReadingContent({
           <MemoQBlock key={key} qKey={key} num={qNum++} qText={sq.question ?? ""}
             choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
             selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-            explainData={sq} onAddToAnki={onAddToAnki} />
+            explainData={sq} onAddToAnki={onAddToAnki} passageText={togoPassageText} />
         );
       });
       pushPassageDivider(`${id}-pre-div`);
@@ -692,7 +798,7 @@ function ReadingContent({
             <MemoQBlock key={key} qKey={key} num={qNum++} qText={sq.question ?? ""}
               choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
               selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-              explainData={sq} onAddToAnki={onAddToAnki} />
+              explainData={sq} onAddToAnki={onAddToAnki} passageText={p.text ?? ""} />
           );
         });
         if (p.text) {
@@ -720,7 +826,7 @@ function ReadingContent({
           <MemoQBlock key={key} qKey={key} num={qNum++} qText={sq.question ?? ""}
             choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
             selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-            explainData={sq} />
+            explainData={sq} onAddToAnki={onAddToAnki} passageText={passage} />
         );
       });
       pushPassageDivider(`${id}-bunsho-div`);
@@ -741,13 +847,14 @@ function ReadingContent({
         (type === "bjt_1_3" || type === "bjt_2_3" ? ["1", "2", "3", "4"] : []);
       const stem = String(q.question ?? (q as Record<string,unknown>).mainQuestion ?? (q as Record<string,unknown>).sentence ?? "");
       const sideImg = getSubImageUrl(q);
+      const passageStr = (q as Record<string, unknown>).passage;
+      const passageStrText = typeof passageStr === "string" ? passageStr : "";
       const qBlock = (
         <MemoQBlock key={id} qKey={id} num={qNum++} qText={stem}
           choices={choices} qType={type} sideImageUrl={sideImg}
           selectedIdx={answers[id]} correctIdx={answerKey[id]} submitted={submitted} onPick={onPick}
-          explainData={q as Record<string, unknown>} onAddToAnki={onAddToAnki} />
+          explainData={q as Record<string, unknown>} onAddToAnki={onAddToAnki} passageText={passageStrText} />
       );
-      const passageStr = (q as Record<string, unknown>).passage;
       if (passageStr && typeof passageStr === "string") {
         pushPassageDivider(`${id}-simple-div`);
         elems.push(
@@ -848,7 +955,7 @@ function ListeningContent({
         if (t1.mainQuestion) {
           elems.push(
             <div key={`${id}-t1-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t1.mainQuestion) : t1.mainQuestion }} />
+              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t1.mainQuestion) : stripVocabTags(t1.mainQuestion) }} />
           );
         }
         const key = `${id}-t1`;
@@ -857,16 +964,17 @@ function ListeningContent({
           <MemoQBlock key={key} qKey={key} num={qNum++} qText=""
             choices={choices} qType={type} sideImageUrl={getSubImageUrl(t1 as Record<string,unknown>)}
             selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-            explainData={t1} onAddToAnki={onAddToAnki} />
+            explainData={t1} onAddToAnki={onAddToAnki} passageText={t1.mainQuestion ?? ""} />
         );
       }
       if (t2) {
         if (t2.mainQuestion) {
           elems.push(
             <div key={`${id}-t2-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t2.mainQuestion) : t2.mainQuestion }} />
+              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t2.mainQuestion) : stripVocabTags(t2.mainQuestion) }} />
           );
         }
+        const t2Main = t2.mainQuestion ?? "";
         (t2.questions ?? []).forEach((sq, i) => {
           const key = `${id}-t2-${i}`;
           const choices = getChoices(sq);
@@ -874,7 +982,7 @@ function ListeningContent({
             <MemoQBlock key={key} qKey={key} num={qNum++} qText=""
               choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
               selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-              explainData={sq} onAddToAnki={onAddToAnki} />
+              explainData={sq} onAddToAnki={onAddToAnki} passageText={t2Main} />
           );
         });
       }

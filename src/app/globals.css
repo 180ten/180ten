@@ -877,9 +877,22 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .cp-add-btn:disabled{opacity:.6;cursor:not-allowed;}
 
 /* ── Vocab tag 【...】 (review mode inline lookups) ── */
-.vocab-tag{color:#f26419;border-bottom:1.5px dashed #f26419;cursor:pointer;border-radius:3px;padding:0 2px;transition:background .15s;}
-.vocab-tag:hover{background:#fff0e8;}
-.vocab-tag:active{background:#ffe0cc;}
+/* Looks like normal text — only the hover highlight hints clickability. */
+.vocab-tag{cursor:pointer;border-radius:3px;transition:background .12s;}
+.vocab-tag:hover{background:rgba(0,0,0,.06);}
+.vocab-tag:active{background:rgba(0,0,0,.10);}
+
+/* ── Auto-vocab grid (review mode, derived from 【】 in passage/question) ── */
+.auto-vocab-box{margin-top:10px;border:1px solid var(--border);border-left:3px solid #f26419;border-radius:10px;background:#fffaf6;padding:10px 12px;}
+.auto-vocab-title{font-size:11px;font-weight:800;color:#f26419;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+.auto-vocab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;}
+.auto-vocab-item{position:relative;background:var(--white);border:1px solid var(--border);border-radius:8px;padding:8px 32px 8px 10px;font-size:12px;line-height:1.55;}
+.auto-vocab-item .av-word{font-size:14px;font-weight:800;color:var(--text);}
+.auto-vocab-item .av-reading{font-size:11px;color:var(--blue);font-weight:600;margin-left:5px;}
+.auto-vocab-item .av-type{display:inline-block;padding:1px 6px;border-radius:4px;background:#fff0e8;color:#f26419;font-size:10px;font-weight:700;margin-left:5px;}
+.auto-vocab-item .av-meaning{margin-top:3px;color:var(--text);font-weight:500;}
+.auto-vocab-item .vc-add-btn{position:absolute;top:6px;right:6px;}
+.auto-vocab-empty{font-size:12px;color:var(--muted2);padding:4px 0;}
 
 /* ── 【】 insert button (compose form) ── */
 .insert-bracket-btn{font-size:11px;font-family:'Noto Sans JP',sans-serif;padding:2px 7px;border-radius:5px;border:1px solid #e0d9d0;background:#faf9f7;cursor:pointer;color:#f26419;font-weight:700;transition:background .15s;line-height:1.4;flex:none;}
