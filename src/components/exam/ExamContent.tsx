@@ -143,10 +143,10 @@ function ChipPopup({
 // question stem) for 【...】 tags, bulk-fetches the matching vocabulary_library
 // rows in ONE query (`.in('word', words)`), and renders a grid card per word.
 
-// Card-specific short meaning: first segment cut at ; or 、 or 40 chars.
+// Vocab-tag short meaning: first segment cut at " - " or 40 chars.
 // (Distinct from the file-level shortMeaning() which uses parseMeaning.)
 function shortMeaningForCard(meaning: string): string {
-  const cut = meaning.split(/[;、]/)[0].trim();
+  const cut = meaning.split(" - ")[0].trim();
   return cut.length > 40 ? cut.slice(0, 40) + "…" : cut;
 }
 
@@ -191,20 +191,15 @@ function AutoVocabBox({ words }: { words: string[] }) {
   if (entries === null)        return <div className="auto-vocab-empty">Đang tải...</div>;
   if (entries.length === 0)    return <div className="auto-vocab-empty">Không tìm thấy từ trong từ điển.</div>;
 
-  // Each row carries `vocab-tag` so the document-level click delegation in
+  // Each pill carries `vocab-tag` so the document-level click delegation in
   // ExamContent opens the same VocabTagPopup as inline tags. No local state.
   return (
-    <div className="auto-vocab-list">
-      {entries.map((e) => {
-        const cut = shortMeaningForCard(e.meaning ?? "");
-        return (
-          <div key={e.word} className="vocab-tag av-list-item" data-word={e.word}>
-            <span className="av-list-word">{e.word}</span>
-            <span className="av-list-sep">:</span>
-            <span className="av-list-meaning">{cut || (e.meaning ?? "—")}</span>
-          </div>
-        );
-      })}
+    <div className="av-pill-wrap">
+      {entries.map((e) => (
+        <span key={e.word} className="vocab-tag av-pill" data-word={e.word}>
+          {e.word}
+        </span>
+      ))}
     </div>
   );
 }

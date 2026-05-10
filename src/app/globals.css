@@ -882,14 +882,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag:hover{background:rgba(0,0,0,.06);}
 .vocab-tag:active{background:rgba(0,0,0,.10);}
 
-/* ── Auto-vocab list (review mode, derived from 【】 in passage/question) ── */
-.auto-vocab-list{margin-top:4px;}
-.av-list-item{padding:6px 0;border-bottom:1px solid #f0ede8;cursor:pointer;font-size:14px;display:flex;gap:8px;border-radius:0;}
-.av-list-item:last-child{border-bottom:none;}
-.av-list-item:hover{background:#faf9f7;}
-.av-list-word{font-family:'Noto Sans JP',sans-serif;font-weight:600;color:#1a1a2e;flex-shrink:0;}
-.av-list-sep{color:#ccc;flex-shrink:0;}
-.av-list-meaning{color:#666;}
+/* ── Auto-vocab pills (review mode, derived from 【】 in passage/question) ── */
+.av-pill-wrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;}
+.av-pill{font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:600;padding:4px 12px;border-radius:20px;border:1.5px solid #e8e3db;background:#faf9f7;cursor:pointer;transition:border-color .15s,background .15s;}
+.av-pill:hover{border-color:#f26419;background:#fff0e8;color:#f26419;}
 .auto-vocab-empty{font-size:12px;color:var(--muted2);padding:4px 0;}
 
 /* ── Vocab tag popup: arrow + han_viet + expand button ── */
