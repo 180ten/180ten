@@ -8,6 +8,8 @@ import {
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
 import { getFixedHeaderText } from "@/app/ad/compose/composeConstants";
+import { renderVocabTags, lookupVocab, prefetchVocab, type VocabEntry } from "@/lib/vocabTag";
+import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
 
@@ -127,6 +129,121 @@ function ChipPopup({
       <button className={`cp-add-btn${st === "done" ? " added" : ""}`} disabled={st === "loading"} onClick={handleAdd}>
         {st === "done" ? "✓ Đã thêm" : st === "loading" ? "..." : "＋ Thêm vào Anki"}
       </button>
+    </div>,
+    document.body
+  );
+}
+
+// ── Vocab-tag popup (review mode 【...】) ──────────────────────────────
+// Reads from the 3-layer cache in lib/vocabTag (session → localStorage → DB).
+// Click opens; hover prefetches; click outside closes (handled by the parent).
+function VocabTagPopup({
+  word, anchor, onClose, onAddToAnki,
+}: {
+  word: string;
+  anchor: { x: number; y: number };
+  onClose: () => void;
+  onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+}) {
+  const [entry, setEntry] = useState<VocabEntry | null | undefined>(undefined);
+  const [addState, setAddState] = useState<"idle" | "loading" | "done">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    setEntry(undefined);
+    setAddState("idle");
+    void lookupVocab(word, sb).then((e) => { if (!cancelled) setEntry(e); });
+    return () => { cancelled = true; };
+  }, [word]);
+
+  const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
+  const winH = typeof window !== "undefined" ? window.innerHeight : 600;
+  const left = Math.max(8, Math.min(anchor.x, winW - 300));
+  const below = anchor.y + 8;
+  const above = anchor.y - 280;
+  const top   = below + 280 > winH ? Math.max(8, above) : below;
+
+  async function handleAdd(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!entry || !onAddToAnki || addState !== "idle") return;
+    setAddState("loading");
+    try {
+      await onAddToAnki({
+        word:      entry.word,
+        reading:   entry.reading ?? "",
+        meaning:   entry.meaning ?? "",
+        word_type: entry.word_type ?? undefined,
+      });
+    } catch { /* noop */ }
+    setAddState("done");
+    setTimeout(() => { setAddState("idle"); onClose(); }, 1500);
+  }
+
+  // examples can be string[] or {jp,vi}[] — show first 2.
+  const exampleStrs: string[] = (() => {
+    const arr = Array.isArray(entry?.examples) ? (entry!.examples as unknown[]) : [];
+    return arr.slice(0, 2).map((e) => {
+      if (typeof e === "string") return e;
+      if (e && typeof e === "object") {
+        const o = e as { jp?: string; vi?: string };
+        return o.vi ? `${o.jp ?? ""} → ${o.vi}` : (o.jp ?? "");
+      }
+      return "";
+    }).filter(Boolean);
+  })();
+
+  const meaning = entry?.meaning ?? "";
+  const { short: mShort, lines: mLines } = meaning ? parseMeaning(meaning) : { short: "", lines: [] };
+
+  return createPortal(
+    <div
+      className="chip-popup vocab-tag-popup"
+      style={{ left, top, position: "fixed" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button className="cp-close" onClick={onClose}>×</button>
+      <div className="cp-word">{entry?.word ?? word}</div>
+      {entry?.reading && <div className="cp-reading">{entry.reading}</div>}
+      {entry?.word_type && (
+        <div style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, background: "#fff0e8", color: "#f26419", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
+          {entry.word_type}
+        </div>
+      )}
+      {entry === undefined && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Đang tải...</div>}
+      {entry === null && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Chưa có trong từ điển.</div>}
+      {entry && (
+        <>
+          {meaning && (
+            <>
+              <div className="cp-meaning" style={{ fontSize: 15, fontWeight: 800 }}>{mShort}</div>
+              {mLines.length > 0 && (
+                <div style={{ marginTop: 6, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                  {mLines.map((l, i) => (
+                    <div key={i} style={{ fontSize: 13, lineHeight: 1.65, marginBottom: NUM_MARKS.test(l[0] ?? "") ? 4 : 2 }}>{l}</div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {exampleStrs.length > 0 && (
+            <div style={{ marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 12, color: "var(--muted)" }}>
+              {exampleStrs.map((ex, i) => (
+                <div key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{ex}</div>
+              ))}
+            </div>
+          )}
+          {onAddToAnki && (
+            <button
+              className={`cp-add-btn${addState === "done" ? " added" : ""}`}
+              disabled={addState === "loading"}
+              onClick={handleAdd}
+              style={{ marginTop: 10 }}
+            >
+              {addState === "done" ? "✓ Đã thêm" : addState === "loading" ? "..." : "＋ Thêm vào Anki"}
+            </button>
+          )}
+        </>
+      )}
     </div>,
     document.body
   );
@@ -400,24 +517,27 @@ function getPassageDensity(text: string): "short" | "medium" | "long" | "dense" 
 
 const PassageBlock = memo(function PassageBlock({
   text,
+  applyTags = false,
 }: {
   text: string;
+  applyTags?: boolean;
 }) {
   const { body, notes } = splitPassageNotes(text);
   const density = getPassageDensity(body || text);
+  const prep = (s: string) => (applyTags ? renderRich(renderVocabTags(s)) : renderRich(s));
 
   return (
     <div
       className={`q-block q-passage-block passage-density-${density}`}
     >
-      {body && <div className="passage-card-body" dangerouslySetInnerHTML={{ __html: renderRich(body) }} />}
+      {body && <div className="passage-card-body" dangerouslySetInnerHTML={{ __html: prep(body) }} />}
       {notes.length > 0 && (
         <div className="passage-note-box">
           <div className="passage-note-lines">
             {notes.map((note, idx) => (
               <div className="passage-note-line" key={`${note.marker}-${idx}`}>
                 <span className="passage-note-marker">{note.marker}</span>
-                <span className="passage-note-text" dangerouslySetInnerHTML={{ __html: renderRich(note.text) }} />
+                <span className="passage-note-text" dangerouslySetInnerHTML={{ __html: prep(note.text) }} />
               </div>
             ))}
           </div>
@@ -540,7 +660,7 @@ function ReadingContent({
               {label}
             </div>
           );
-          left.push(<PassageBlock key={`${id}-pt-${pIdx}`} text={text} />);
+          left.push(<PassageBlock key={`${id}-pt-${pIdx}`} text={text} applyTags={submitted} />);
           renderedPassageCount++;
         }
       });
@@ -580,7 +700,7 @@ function ReadingContent({
           elems.push(
             <PassageSplit
               key={`${id}-split-${pIdx}`}
-              left={<PassageBlock key={`${id}-pt-${pIdx}`} text={p.text} />}
+              left={<PassageBlock key={`${id}-pt-${pIdx}`} text={p.text} applyTags={submitted} />}
               right={right}
             />
           );
@@ -607,7 +727,7 @@ function ReadingContent({
       elems.push(
         <PassageSplit
           key={`${id}-bunsho-split`}
-          left={<PassageBlock key={`${id}-passage`} text={passage} />}
+          left={<PassageBlock key={`${id}-passage`} text={passage} applyTags={submitted} />}
           right={right}
           equalWidth
         />
@@ -633,7 +753,7 @@ function ReadingContent({
         elems.push(
           <PassageSplit
             key={`${id}-simple-split`}
-            left={<PassageBlock key={`${id}-p`} text={passageStr} />}
+            left={<PassageBlock key={`${id}-p`} text={passageStr} applyTags={submitted} />}
             right={[qBlock]}
           />
         );
@@ -728,7 +848,7 @@ function ListeningContent({
         if (t1.mainQuestion) {
           elems.push(
             <div key={`${id}-t1-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: t1.mainQuestion }} />
+              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t1.mainQuestion) : t1.mainQuestion }} />
           );
         }
         const key = `${id}-t1`;
@@ -744,7 +864,7 @@ function ListeningContent({
         if (t2.mainQuestion) {
           elems.push(
             <div key={`${id}-t2-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: t2.mainQuestion }} />
+              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t2.mainQuestion) : t2.mainQuestion }} />
           );
         }
         (t2.questions ?? []).forEach((sq, i) => {
@@ -791,6 +911,45 @@ export default function ExamContent({
     [questions],
   );
 
+  // ── Vocab-tag popup state + delegated handlers ────────────────────────
+  // Active only in review mode. Click on .vocab-tag opens popup; hover
+  // prefetches into the cache layer so the click feel instant. Mobile
+  // (touch-only devices) skips hover and goes click-direct.
+  const [vocabPopup, setVocabPopup] = useState<{ word: string; anchor: { x: number; y: number }; key: number } | null>(null);
+
+  useEffect(() => {
+    if (!submitted) { setVocabPopup(null); return; }
+    const isTouch = typeof window !== "undefined" && ("ontouchstart" in window || (navigator as { maxTouchPoints?: number }).maxTouchPoints! > 0);
+
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Click inside the popup itself → ignore (popup handles its own clicks)
+      if (target.closest?.(".vocab-tag-popup")) return;
+      const tag = target.closest?.(".vocab-tag") as HTMLElement | null;
+      if (!tag) { setVocabPopup(null); return; }
+      const word = tag.getAttribute("data-word") || "";
+      if (!word) return;
+      const r = tag.getBoundingClientRect();
+      setVocabPopup({ word, anchor: { x: r.left, y: r.bottom }, key: Date.now() });
+    };
+
+    const onMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.closest?.(".vocab-tag") as HTMLElement | null;
+      if (!tag) return;
+      const word = tag.getAttribute("data-word") || "";
+      if (word) prefetchVocab(word, sb);
+    };
+
+    document.addEventListener("click", onClick);
+    if (!isTouch) document.addEventListener("mouseover", onMouseOver);
+    return () => {
+      document.removeEventListener("click", onClick);
+      if (!isTouch) document.removeEventListener("mouseover", onMouseOver);
+    };
+  }, [submitted]);
+
   console.log("[ExamContent] render", {
     phase,
     submitted,
@@ -800,10 +959,23 @@ export default function ExamContent({
     sampleListenType: listenQs[0] ? String((listenQs[0] as Record<string, unknown>).type ?? "") : null,
   });
 
+  const popupNode = vocabPopup && (
+    <VocabTagPopup
+      key={vocabPopup.key}
+      word={vocabPopup.word}
+      anchor={vocabPopup.anchor}
+      onClose={() => setVocabPopup(null)}
+      onAddToAnki={onAddToAnki}
+    />
+  );
+
   if (phase === "listen") {
     return (
-      <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
-        keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
+      <>
+        <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
+          keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
+        {popupNode}
+      </>
     );
   }
   // Review mode: after submit, render reading + listening stacked so users
@@ -817,12 +989,16 @@ export default function ExamContent({
           keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
         <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
           keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
+        {popupNode}
       </>
     );
   }
   return (
-    <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
-      keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
+    <>
+      <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
+        keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
+      {popupNode}
+    </>
   );
 }
 

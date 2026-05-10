@@ -282,6 +282,15 @@ function Fl({ label, hint, children, mb = 16 }: {
     </div>
   );
 }
+function VocabTagHint() {
+  return (
+    <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fff7f1", border: "1px solid #fde0d3", borderLeft: "3px solid #f26419", borderRadius: 8, fontSize: 11, lineHeight: 1.65, color: "#1a1917" }}>
+      <div style={{ fontWeight: 700, color: "#f26419", marginBottom: 2 }}>💡 Dùng 【từ】 để đánh dấu từ vựng quan trọng</div>
+      <div>Ví dụ: 【私】は【会社員】です</div>
+      <div>Có furigana: 【{`{(合格)(ごうかく)}`}】</div>
+    </div>
+  );
+}
 function FixedHeader({ text }: { text: string }) {
   return (
     <div style={{ marginBottom: 20, padding: "11px 14px", background: C.surface, border: `1px solid ${C.border2}`, borderRadius: 8, borderLeft: `3px solid ${C.muted}` }}>
@@ -723,9 +732,10 @@ function BunshoForm({ data, onChange, level }: { data: QData; onChange: (d: QDat
         <Fl label="Số x (bắt đầu)" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="46" /></Fl>
         <Fl label="Số y (kết thúc)" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="50" /></Fl>
       </div>
-      <Fl label="Đoạn văn" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦]">
+      <Fl label="Đoạn văn" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 【từ】">
         <RichTa value={String(data.passage||"")} onChange={v => u("passage",v)} placeholder="Nội dung đoạn văn..." rows={7} />
       </Fl>
+      <VocabTagHint />
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: C.surface }}>
         <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 6 }}>Preview đoạn văn</div>
         {rRich(String(data.passage||""))}
@@ -776,9 +786,10 @@ function ReadingBase({ data, onChange, qPerPassage, multiPassage, typeId, level 
             <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>{multiPassage ? `Đoạn văn ${pi+1}` : "Đoạn văn"}</span>
             {multiPassage && passages.length > 1 && <button type="button" onClick={() => rmP(pi)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
-          <Fl label="Nội dung" hint="B / I / U / căn lề / size / 　　 / [縦][/縦]">
+          <Fl label="Nội dung" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 【từ】">
             <RichTa value={p.text||""} onChange={v => uP(pi,"text",v)} rows={6} placeholder="Paste đoạn văn..." />
           </Fl>
+          <VocabTagHint />
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, background: C.surface }}>
             <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 4 }}>Preview</div>{rRich(p.text||"")}
           </div>

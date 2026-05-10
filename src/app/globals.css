@@ -876,6 +876,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .cp-add-btn.added{border-color:#22c55e;background:#f0fdf4;color:#22c55e;}
 .cp-add-btn:disabled{opacity:.6;cursor:not-allowed;}
 
+/* ── Vocab tag 【...】 (review mode inline lookups) ── */
+.vocab-tag{color:#f26419;border-bottom:1.5px dashed #f26419;cursor:pointer;border-radius:3px;padding:0 2px;transition:background .15s;}
+.vocab-tag:hover{background:#fff0e8;}
+.vocab-tag:active{background:#ffe0cc;}
+
 /* ── Explain panel ── */
 .explain-btn{display:none;width:100%;margin-top:10px;padding:8px 14px;border-radius:9px;border:1px solid var(--border2);background:var(--surface);cursor:pointer;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-size:12px;font-weight:600;color:var(--muted);text-align:left;transition:all .15s;}
 .explain-btn:hover,.explain-btn.open{border-color:var(--accent);color:var(--accent);background:#fef0ec;}
