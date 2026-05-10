@@ -253,51 +253,16 @@ function AutoVocabBox({
 // Reads from the 3-layer cache in lib/vocabTag (session → localStorage → DB).
 // Click opens; hover prefetches; click outside closes (handled by the parent).
 
-// Smart positioning — flips to "above" when there's not enough room below,
-// and clamps `maxHeight` so the popup never extends past the viewport edge
-// (was being clipped at the bottom when content expanded).
-//
-// Uses position:fixed (viewport-relative) + createPortal(document.body) so it
-// escapes any ancestor overflow / stacking context. No scroll offsets needed.
-type PopupAnchor = { top: number; bottom: number; left: number };
-function getPopupStyle(a: PopupAnchor): { style: React.CSSProperties; showAbove: boolean } {
-  const popupW = 240; // matches CSS max-width
-  const popupH = 240; // estimate for flip decision (collapsed popup ≈ this)
-  const margin = 12;
-  const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
-  const winH = typeof window !== "undefined" ? window.innerHeight : 600;
-  const spaceBelow = winH - a.bottom - margin;
-  const spaceAbove = a.top - margin;
-  const showAbove = spaceBelow < popupH && spaceAbove > spaceBelow;
-
-  let left = a.left;
-  if (left + popupW > winW) left = winW - popupW - margin;
-  if (left < 8) left = 8;
-
-  // Cap maxHeight to whatever space the chosen side actually has so the popup
-  // can never extend past the top or bottom of the viewport. Internal scroll
-  // (`overflow-y: auto` in CSS) handles content longer than this.
-  let top: number;
-  let maxHeight: number;
-  if (showAbove) {
-    maxHeight = Math.max(120, spaceAbove);
-    top = Math.max(8, a.top - 8 - Math.min(popupH, maxHeight));
-  } else {
-    maxHeight = Math.max(120, spaceBelow);
-    top = a.bottom + 8;
-  }
-
-  return {
-    style: { position: "fixed", left, top, maxHeight, zIndex: 9999 },
-    showAbove,
-  };
-}
+// Position is computed at CLICK time from the trigger's
+// getBoundingClientRect (viewport coords) — never adds scrollX/scrollY since
+// position:fixed is viewport-relative, not document-relative.
 
 function VocabTagPopup({
-  word, anchor, onClose, onAddToAnki,
+  word, popupStyle, showAbove, onClose, onAddToAnki,
 }: {
   word: string;
-  anchor: PopupAnchor;
+  popupStyle: React.CSSProperties;
+  showAbove: boolean;
   onClose: () => void;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
 }) {
@@ -313,8 +278,6 @@ function VocabTagPopup({
     void lookupVocab(word, sb).then((e) => { if (!cancelled) setEntry(e); });
     return () => { cancelled = true; };
   }, [word]);
-
-  const { style: popupStyle, showAbove } = getPopupStyle(anchor);
 
   async function handleAdd(e: React.MouseEvent) {
     e.stopPropagation();
@@ -1109,7 +1072,12 @@ export default function ExamContent({
   // Active only in review mode. Click on .vocab-tag opens popup; hover
   // prefetches into the cache layer so the click feel instant. Mobile
   // (touch-only devices) skips hover and goes click-direct.
-  const [vocabPopup, setVocabPopup] = useState<{ word: string; anchor: PopupAnchor; key: number } | null>(null);
+  const [vocabPopup, setVocabPopup] = useState<{
+    word: string;
+    popupStyle: React.CSSProperties;
+    showAbove: boolean;
+    key: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!submitted) { setVocabPopup(null); return; }
@@ -1120,17 +1088,50 @@ export default function ExamContent({
       if (!target) return;
       // Click inside the popup itself → ignore (popup handles its own clicks)
       if (target.closest?.(".vocab-tag-popup")) return;
-      const tag = target.closest?.(".vocab-tag") as HTMLElement | null;
+      const tag = target.closest?.("[data-word]") as HTMLElement | null;
       if (!tag) { setVocabPopup(null); return; }
       const word = tag.getAttribute("data-word") || "";
       if (!word) return;
-      const r = tag.getBoundingClientRect();
-      setVocabPopup({ word, anchor: { top: r.top, bottom: r.bottom, left: r.left }, key: Date.now() });
+
+      // Position math — popup uses position:fixed (viewport-relative), so DO
+      // NOT add window.scrollX/scrollY. getBoundingClientRect already returns
+      // viewport coords.
+      const rect      = tag.getBoundingClientRect();
+      const popupW    = 240;            // matches CSS max-width
+      const popupHEst = 240;            // estimate for flip decision
+      const winW      = window.innerWidth;
+      const winH      = window.innerHeight;
+      const spaceBelow = winH - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      const showAbove  = spaceBelow < popupHEst && spaceAbove > spaceBelow;
+
+      let left = rect.left;
+      if (left + popupW > winW - 8) left = winW - popupW - 8;
+      if (left < 8) left = 8;
+
+      let top: number;
+      let maxHeight: number;
+      if (showAbove) {
+        maxHeight = Math.max(120, spaceAbove);
+        top = Math.max(8, rect.top - 8 - Math.min(popupHEst, maxHeight));
+      } else {
+        maxHeight = Math.max(120, spaceBelow);
+        top = rect.bottom + 8;
+      }
+
+      const popupStyle: React.CSSProperties = {
+        position: "fixed",
+        top,
+        left,
+        maxHeight,
+        zIndex: 9999,
+      };
+      setVocabPopup({ word, popupStyle, showAbove, key: Date.now() });
     };
 
     const onMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      const tag = target?.closest?.(".vocab-tag") as HTMLElement | null;
+      const tag = target?.closest?.("[data-word]") as HTMLElement | null;
       if (!tag) return;
       const word = tag.getAttribute("data-word") || "";
       if (word) prefetchVocab(word, sb);
@@ -1157,7 +1158,8 @@ export default function ExamContent({
     <VocabTagPopup
       key={vocabPopup.key}
       word={vocabPopup.word}
-      anchor={vocabPopup.anchor}
+      popupStyle={vocabPopup.popupStyle}
+      showAbove={vocabPopup.showAbove}
       onClose={() => setVocabPopup(null)}
       onAddToAnki={onAddToAnki}
     />
