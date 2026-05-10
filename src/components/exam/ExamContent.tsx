@@ -142,6 +142,26 @@ function ChipPopup({
 // For each question in review mode, scans the surrounding text (passage +
 // question stem) for 【...】 tags, bulk-fetches the matching vocabulary_library
 // rows in ONE query (`.in('word', words)`), and renders a grid card per word.
+
+// Card-specific short meaning: first segment cut at ; or 、 or 40 chars.
+// (Distinct from the file-level shortMeaning() which uses parseMeaning.)
+function shortMeaningForCard(meaning: string): string {
+  const cut = meaning.split(/[;、]/)[0].trim();
+  return cut.length > 40 ? cut.slice(0, 40) + "…" : cut;
+}
+
+function parseExampleStrs(examples: unknown): string[] {
+  const arr = Array.isArray(examples) ? examples : [];
+  return arr.map((e) => {
+    if (typeof e === "string") return e;
+    if (e && typeof e === "object") {
+      const o = e as { jp?: string; vi?: string };
+      return o.vi ? `${o.jp ?? ""} → ${o.vi}` : (o.jp ?? "");
+    }
+    return "";
+  }).filter(Boolean);
+}
+
 function AutoVocabBox({
   words, onAddToAnki,
 }: {
@@ -149,6 +169,16 @@ function AutoVocabBox({
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
 }) {
   const [entries, setEntries] = useState<VocabEntry[] | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggle = (word: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(word)) next.delete(word);
+      else next.add(word);
+      return next;
+    });
+  };
 
   // Stable cache key — order doesn't matter, but de-dup happens upstream
   const stable = words.join("|");
@@ -183,13 +213,34 @@ function AutoVocabBox({
       ) : (
         <div className="auto-vocab-grid">
           {entries.map((e) => {
-            const { short: mShort } = parseMeaning(e.meaning ?? "");
+            const meaning = e.meaning ?? "";
+            const cut     = shortMeaningForCard(meaning);
+            const examples = parseExampleStrs(e.examples);
+            const wasCut  = meaning.trim().length > cut.length;
+            const hasMore = wasCut || examples.length > 0;
+            const isOpen  = expanded.has(e.word);
             return (
-              <div key={e.word} className="auto-vocab-item">
+              <div key={e.word} className={`auto-vocab-item${isOpen ? " expanded" : ""}`}>
                 <span className="av-word">{e.word}</span>
                 {e.reading && <span className="av-reading">{e.reading}</span>}
                 {e.word_type && <span className="av-type">{e.word_type}</span>}
-                {e.meaning && <div className="av-meaning">{mShort || e.meaning}</div>}
+                {meaning && (
+                  <div className="av-meaning" style={isOpen ? { whiteSpace: "pre-wrap" } : undefined}>
+                    {isOpen ? meaning : cut}
+                  </div>
+                )}
+                {isOpen && examples.length > 0 && (
+                  <div className="av-examples">
+                    {examples.map((ex, i) => (
+                      <div key={i} className="av-example-line">{ex}</div>
+                    ))}
+                  </div>
+                )}
+                {hasMore && (
+                  <button type="button" className="av-expand-btn" onClick={() => toggle(e.word)}>
+                    {isOpen ? "Rút gọn ▴" : "Xem thêm ▾"}
+                  </button>
+                )}
                 {onAddToAnki && (
                   <QuickAddBtn onAdd={() => onAddToAnki({
                     word:      e.word,
@@ -210,11 +261,39 @@ function AutoVocabBox({
 // ── Vocab-tag popup (review mode 【...】) ──────────────────────────────
 // Reads from the 3-layer cache in lib/vocabTag (session → localStorage → DB).
 // Click opens; hover prefetches; click outside closes (handled by the parent).
+
+// Smart positioning — flips to "above" when there's not enough room below.
+// Uses position:fixed (viewport-relative) so it escapes any ancestor overflow
+// clipping. Coordinates therefore need NO scroll offsets.
+type PopupAnchor = { top: number; bottom: number; left: number };
+function getPopupStyle(a: PopupAnchor): { style: React.CSSProperties; showAbove: boolean } {
+  const popupH = 280;
+  const popupW = 260;
+  const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
+  const winH = typeof window !== "undefined" ? window.innerHeight : 600;
+  const spaceBelow = winH - a.bottom;
+  const spaceAbove = a.top;
+  const showAbove = spaceBelow < popupH && spaceAbove > spaceBelow;
+
+  let left = a.left;
+  if (left + popupW > winW) left = winW - popupW - 12;
+  if (left < 8) left = 8;
+
+  const top = showAbove
+    ? Math.max(8, a.top - popupH - 8)
+    : Math.min(a.bottom + 8, winH - 40);
+
+  return {
+    style: { position: "fixed", left, top, width: popupW, zIndex: 9999 },
+    showAbove,
+  };
+}
+
 function VocabTagPopup({
   word, anchor, onClose, onAddToAnki,
 }: {
   word: string;
-  anchor: { x: number; y: number };
+  anchor: PopupAnchor;
   onClose: () => void;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
 }) {
@@ -229,12 +308,7 @@ function VocabTagPopup({
     return () => { cancelled = true; };
   }, [word]);
 
-  const winW = typeof window !== "undefined" ? window.innerWidth  : 800;
-  const winH = typeof window !== "undefined" ? window.innerHeight : 600;
-  const left = Math.max(8, Math.min(anchor.x, winW - 300));
-  const below = anchor.y + 8;
-  const above = anchor.y - 280;
-  const top   = below + 280 > winH ? Math.max(8, above) : below;
+  const { style: popupStyle, showAbove } = getPopupStyle(anchor);
 
   async function handleAdd(e: React.MouseEvent) {
     e.stopPropagation();
@@ -270,8 +344,8 @@ function VocabTagPopup({
 
   return createPortal(
     <div
-      className="chip-popup vocab-tag-popup"
-      style={{ left, top, position: "fixed" }}
+      className={`chip-popup vocab-tag-popup ${showAbove ? "above" : "below"}`}
+      style={popupStyle}
       onClick={(e) => e.stopPropagation()}
     >
       <button className="cp-close" onClick={onClose}>×</button>
@@ -1028,7 +1102,7 @@ export default function ExamContent({
   // Active only in review mode. Click on .vocab-tag opens popup; hover
   // prefetches into the cache layer so the click feel instant. Mobile
   // (touch-only devices) skips hover and goes click-direct.
-  const [vocabPopup, setVocabPopup] = useState<{ word: string; anchor: { x: number; y: number }; key: number } | null>(null);
+  const [vocabPopup, setVocabPopup] = useState<{ word: string; anchor: PopupAnchor; key: number } | null>(null);
 
   useEffect(() => {
     if (!submitted) { setVocabPopup(null); return; }
@@ -1044,7 +1118,7 @@ export default function ExamContent({
       const word = tag.getAttribute("data-word") || "";
       if (!word) return;
       const r = tag.getBoundingClientRect();
-      setVocabPopup({ word, anchor: { x: r.left, y: r.bottom }, key: Date.now() });
+      setVocabPopup({ word, anchor: { top: r.top, bottom: r.bottom, left: r.left }, key: Date.now() });
     };
 
     const onMouseOver = (e: MouseEvent) => {
