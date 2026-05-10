@@ -1093,37 +1093,26 @@ export default function ExamContent({
       const word = tag.getAttribute("data-word") || "";
       if (!word) return;
 
-      // Position math — popup uses position:fixed (viewport-relative), so DO
-      // NOT add window.scrollX/scrollY. getBoundingClientRect already returns
-      // viewport coords.
-      const rect      = tag.getBoundingClientRect();
-      const popupW    = 240;            // matches CSS max-width
-      const popupHEst = 240;            // estimate for flip decision
-      const winW      = window.innerWidth;
-      const winH      = window.innerHeight;
-      const spaceBelow = winH - rect.bottom - 8;
-      const spaceAbove = rect.top - 8;
-      const showAbove  = spaceBelow < popupHEst && spaceAbove > spaceBelow;
+      // Position from getBoundingClientRect (viewport-relative).
+      // position:fixed is viewport-relative, so do NOT add scrollX/scrollY.
+      const rect = tag.getBoundingClientRect();
+      const popupW = 240;
+      const popupH = 200; // estimated for flip decision
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const showAbove = spaceBelow < popupH && rect.top > popupH;
 
       let left = rect.left;
-      if (left + popupW > winW - 8) left = winW - popupW - 8;
+      if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8;
       if (left < 8) left = 8;
 
-      let top: number;
-      let maxHeight: number;
-      if (showAbove) {
-        maxHeight = Math.max(120, spaceAbove);
-        top = Math.max(8, rect.top - 8 - Math.min(popupHEst, maxHeight));
-      } else {
-        maxHeight = Math.max(120, spaceBelow);
-        top = rect.bottom + 8;
-      }
+      const top = showAbove
+        ? rect.top - popupH - 8
+        : rect.bottom + 8;
 
       const popupStyle: React.CSSProperties = {
         position: "fixed",
         top,
         left,
-        maxHeight,
         zIndex: 9999,
       };
       setVocabPopup({ word, popupStyle, showAbove, key: Date.now() });
