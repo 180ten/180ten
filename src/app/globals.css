@@ -884,12 +884,25 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 
 /* ── Auto-vocab pills (review mode, derived from 【】 in passage/question) ── */
 .av-pill-wrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;}
-.av-pill{font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:600;padding:4px 12px;border-radius:20px;border:1.5px solid #e8e3db;background:#faf9f7;cursor:pointer;transition:border-color .15s,background .15s;}
-.av-pill:hover{border-color:#f26419;background:#fff0e8;color:#f26419;}
+.av-pill{display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 10px;border-radius:20px;border:1.5px solid #e8e3db;background:#faf9f7;cursor:pointer;transition:border-color .15s,background .15s;}
+.av-pill:hover{border-color:#f26419;background:#fff0e8;}
+.av-pill-word{font-family:'Noto Sans JP',sans-serif;font-weight:700;color:#1a1a2e;}
+.av-pill-sep{color:#ccc;}
+.av-pill-meaning{color:#666;font-size:12px;}
+.av-pill-add{margin-left:4px;background:none;border:none;color:#f26419;font-size:14px;font-weight:700;cursor:pointer;padding:0 2px;line-height:1;transition:color .15s;}
+.av-pill-add:hover{color:#d4550f;}
 .auto-vocab-empty{font-size:12px;color:var(--muted2);padding:4px 0;}
 
-/* ── Vocab tag popup: arrow + han_viet + expand button ── */
-.cp-hanviet{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:6px;}
+/* ── Vocab tag popup: scoped layout (header / divider / short / full) ── */
+/* Scoped via .vocab-tag-popup so the legacy ChipPopup styles stay intact. */
+.vocab-tag-popup .cp-header{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;padding-right:24px;}
+.vocab-tag-popup .cp-word{font-size:20px;font-weight:700;font-family:'Noto Sans JP',sans-serif;margin-bottom:0;padding-right:0;}
+.vocab-tag-popup .cp-type{font-size:10px;font-weight:700;color:#f26419;letter-spacing:.08em;text-transform:uppercase;}
+.vocab-tag-popup .cp-reading{font-size:12px;color:#aaa;font-family:'Noto Sans JP',sans-serif;font-weight:400;margin-bottom:2px;}
+.vocab-tag-popup .cp-hanviet{font-size:11px;color:#bbb;font-style:italic;margin-bottom:8px;}
+.vocab-tag-popup .cp-divider{height:1px;background:#333;margin:8px 0;}
+.vocab-tag-popup .cp-short{font-size:13px;margin-bottom:6px;}
+.vocab-tag-popup .cp-full{font-size:12px;color:#ccc;line-height:1.7;margin-bottom:8px;white-space:pre-wrap;}
 .cp-expand-btn{display:inline-block;margin-top:8px;padding:2px 0;background:none;border:none;color:#f26419;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
 .cp-expand-btn:hover{text-decoration:underline;}
 .cp-examples{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);}

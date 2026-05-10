@@ -143,11 +143,11 @@ function ChipPopup({
 // question stem) for 【...】 tags, bulk-fetches the matching vocabulary_library
 // rows in ONE query (`.in('word', words)`), and renders a grid card per word.
 
-// Vocab-tag short meaning: first segment cut at " - " or 40 chars.
-// (Distinct from the file-level shortMeaning() which uses parseMeaning.)
-function shortMeaningForCard(meaning: string): string {
+// Vocab-tag short meaning: text before " - " trimmed, capped at `max` chars
+// with ellipsis. Distinct from the file-level shortMeaning() (parseMeaning).
+function shortMeaningForCard(meaning: string, max = 40): string {
   const cut = meaning.split(" - ")[0].trim();
-  return cut.length > 40 ? cut.slice(0, 40) + "…" : cut;
+  return cut.length > max ? cut.slice(0, max) + "…" : cut;
 }
 
 function parseExampleStrs(examples: unknown): string[] {
@@ -162,44 +162,75 @@ function parseExampleStrs(examples: unknown): string[] {
   }).filter(Boolean);
 }
 
-function AutoVocabBox({ words }: { words: string[] }) {
-  const [entries, setEntries] = useState<VocabEntry[] | null>(null);
+function AutoVocabBox({
+  words, onAddToAnki,
+}: {
+  words: string[];
+  onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+}) {
+  const [entryMap, setEntryMap] = useState<Map<string, VocabEntry> | null>(null);
 
   // Stable cache key — order doesn't matter, but de-dup happens upstream
   const stable = words.join("|");
 
   useEffect(() => {
-    if (words.length === 0) { setEntries([]); return; }
+    if (words.length === 0) { setEntryMap(new Map()); return; }
     let cancelled = false;
     void lookupVocabBulk(words, sb).then((map) => {
-      if (cancelled) return;
-      // Preserve original word order; drop entries with no DB match
-      const out: VocabEntry[] = [];
-      const seen = new Set<string>();
-      for (const w of words) {
-        if (seen.has(w)) continue;
-        seen.add(w);
-        const e = map.get(w);
-        if (e) out.push(e);
-      }
-      setEntries(out);
+      if (!cancelled) setEntryMap(map);
     });
     return () => { cancelled = true; };
   }, [stable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (words.length === 0) return null;
-  if (entries === null)        return <div className="auto-vocab-empty">Đang tải...</div>;
-  if (entries.length === 0)    return <div className="auto-vocab-empty">Không tìm thấy từ trong từ điển.</div>;
+
+  // Dedupe + preserve first-occurrence order
+  const seen: Set<string> = new Set();
+  const uniq: string[] = [];
+  for (const w of words) {
+    const k = w.trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(k);
+  }
 
   // Each pill carries `vocab-tag` so the document-level click delegation in
-  // ExamContent opens the same VocabTagPopup as inline tags. No local state.
+  // ExamContent opens the same VocabTagPopup as inline tags. The "+" button
+  // stops propagation so it triggers Anki-add without opening the popup.
   return (
     <div className="av-pill-wrap">
-      {entries.map((e) => (
-        <span key={e.word} className="vocab-tag av-pill" data-word={e.word}>
-          {e.word}
-        </span>
-      ))}
+      {uniq.map((word) => {
+        const entry = entryMap?.get(word);
+        const cut   = entry?.meaning ? shortMeaningForCard(entry.meaning, 20) : "";
+        return (
+          <span key={word} className="vocab-tag av-pill" data-word={word}>
+            <span className="av-pill-word">{word}</span>
+            {entry?.meaning && (
+              <>
+                <span className="av-pill-sep">：</span>
+                <span className="av-pill-meaning">{cut}</span>
+              </>
+            )}
+            {onAddToAnki && (
+              <button
+                type="button"
+                className="av-pill-add"
+                title="Thêm vào Anki"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onAddToAnki(entry ? {
+                    word:      entry.word,
+                    reading:   entry.reading ?? "",
+                    meaning:   entry.meaning ?? "",
+                    word_type: entry.word_type ?? undefined,
+                  } : { word, reading: "", meaning: "" });
+                }}
+              >＋</button>
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -275,10 +306,11 @@ function VocabTagPopup({
   }
 
   const meaning  = entry?.meaning ?? "";
-  const cut      = shortMeaningForCard(meaning);
+  const parts    = meaning.split(" - ");
+  const shortM   = parts[0].trim();
+  const fullM    = parts.slice(1).join(" - ").trim();
   const examples = parseExampleStrs(entry?.examples);
-  const wasCut   = meaning.trim().length > cut.length;
-  const hasMore  = wasCut || examples.length > 0;
+  const hasMore  = !!fullM || examples.length > 0;
 
   return createPortal(
     <div
@@ -287,23 +319,19 @@ function VocabTagPopup({
       onClick={(e) => e.stopPropagation()}
     >
       <button className="cp-close" onClick={onClose}>×</button>
-      <div className="cp-word">{entry?.word ?? word}</div>
+      <div className="cp-header">
+        <span className="cp-word">{entry?.word ?? word}</span>
+        {entry?.word_type && <span className="cp-type">{entry.word_type}</span>}
+      </div>
       {entry?.reading && <div className="cp-reading">{entry.reading}</div>}
       {entry?.han_viet && <div className="cp-hanviet">{entry.han_viet}</div>}
-      {entry?.word_type && (
-        <div style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, background: "#fff0e8", color: "#f26419", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-          {entry.word_type}
-        </div>
-      )}
       {entry === undefined && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Đang tải...</div>}
       {entry === null && <div style={{ fontSize: 13, color: "var(--muted2)" }}>Chưa có trong từ điển.</div>}
       {entry && (
         <>
-          {meaning && (
-            <div className="cp-meaning" style={expanded ? { whiteSpace: "pre-wrap", fontSize: 13, fontWeight: 600 } : { fontSize: 13, fontWeight: 600 }}>
-              {expanded ? meaning : cut}
-            </div>
-          )}
+          {shortM && <div className="cp-divider" />}
+          {shortM && <div className="cp-short">{shortM}</div>}
+          {expanded && fullM && <div className="cp-full">{fullM}</div>}
           {expanded && examples.length > 0 && (
             <div className="cp-examples">
               {examples.map((ex, i) => (
@@ -451,7 +479,7 @@ function ExplainPanel({
                       </div>
                     )}
                     {taggedWords.length > 0 && (
-                      <AutoVocabBox words={taggedWords} />
+                      <AutoVocabBox words={taggedWords} onAddToAnki={onAddToAnki} />
                     )}
                   </>
                 : <span className="explain-empty">Chưa có từ vựng.</span>
