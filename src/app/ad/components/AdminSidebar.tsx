@@ -1,11 +1,13 @@
 "use client";
 
-export type AdminTabId = "students" | "payments" | "exams" | "compose" | "vocab" | "grammar" | "anki";
+export type AdminTabId = "students" | "payments" | "exams" | "compose" | "vocab" | "grammar" | "anki" | "security";
 
 interface AdminSidebarProps {
   adminUser: { email?: string; user_metadata?: Record<string, unknown> } | null;
   activeTab: AdminTabId;
   pendingPayments: number;
+  /** Number of distinct users with anomaly_events in the last 7 days. */
+  securityCount: number;
   theme: "dark" | "light";
   onToggleTheme: () => void;
   onTabChange: (tab: AdminTabId) => void;
@@ -15,6 +17,7 @@ interface AdminSidebarProps {
 const NAV_ITEMS: { id: AdminTabId; label: string; icon: string; group?: string }[] = [
   { id: "students",  label: "Học viên",         icon: "👥", group: "Quản lý" },
   { id: "payments",  label: "Thanh toán",        icon: "💳" },
+  { id: "security",  label: "Bảo mật",           icon: "🛡️" },
   { id: "exams",     label: "Danh sách đề",      icon: "📋" },
   { id: "compose",   label: "Soạn đề",           icon: "✏️",  group: "Nội dung" },
   { id: "vocab",     label: "Thư viện từ vựng",  icon: "📖" },
@@ -23,7 +26,7 @@ const NAV_ITEMS: { id: AdminTabId; label: string; icon: string; group?: string }
 ];
 
 export default function AdminSidebar({
-  adminUser, activeTab, pendingPayments, theme, onToggleTheme, onTabChange, onLogout,
+  adminUser, activeTab, pendingPayments, securityCount, theme, onToggleTheme, onTabChange, onLogout,
 }: AdminSidebarProps) {
   const name = String(adminUser?.user_metadata?.full_name ?? adminUser?.email?.split("@")[0] ?? "Admin");
   const init = name[0].toUpperCase();
@@ -46,6 +49,14 @@ export default function AdminSidebar({
               {item.label}
               {item.id === "payments" && pendingPayments > 0 && (
                 <span className="pay-badge-dot" id="pay-nav-badge">{pendingPayments}</span>
+              )}
+              {item.id === "security" && securityCount > 0 && (
+                <span style={{
+                  background: "#e74c3c", color: "#fff", borderRadius: 10,
+                  fontSize: 11, fontWeight: 700, padding: "1px 7px", marginLeft: 6,
+                }}>
+                  {securityCount}
+                </span>
               )}
             </button>
           </div>

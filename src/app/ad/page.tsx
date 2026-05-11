@@ -12,6 +12,8 @@ import ComposeTab   from "./tabs/ComposeTab";
 import VocabTab     from "./tabs/VocabTab";
 import GrammarTab   from "./tabs/GrammarTab";
 import AnkiAdminTab from "./tabs/AnkiAdminTab";
+import SecurityTab  from "./tabs/SecurityTab";
+import { adminGet } from "@/lib/adminApi";
 
 interface AdminUser {
   id: string;
@@ -24,6 +26,7 @@ export default function AdminPage() {
   const [checking, setChecking]     = useState(true);
   const [activeTab, setActiveTab]   = useState<AdminTabId>("students");
   const [pendingPay, setPendingPay] = useState(0);
+  const [securityCount, setSecurityCount] = useState(0);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     if (typeof window === "undefined") return "dark";
     try {
@@ -39,6 +42,22 @@ export default function AdminPage() {
     setToastMsg(msg); setToastType(type);
     setTimeout(() => setToastMsg(""), 3500);
   }
+
+  // Sidebar badge: number of users with anomaly_events in the last 7 days.
+  // Polls every 60s; fails silent (badge stays at last value or 0).
+  useEffect(() => {
+    if (!adminUser) return;
+    let cancelled = false;
+    async function fetchCount() {
+      try {
+        const data = await adminGet<{ count?: number }>("/api/admin/security?count=true");
+        if (!cancelled) setSecurityCount(data.count ?? 0);
+      } catch { /* silent — keep prior badge */ }
+    }
+    void fetchCount();
+    const id = setInterval(fetchCount, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [adminUser]);
 
   // Try to restore existing admin session on mount
   useEffect(() => {
@@ -102,6 +121,7 @@ export default function AdminPage() {
         adminUser={adminUser}
         activeTab={activeTab}
         pendingPayments={pendingPay}
+        securityCount={securityCount}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         onTabChange={handleTabChange}
@@ -110,6 +130,7 @@ export default function AdminPage() {
       <div className="content">
         {activeTab === "students" && <StudentsTab />}
         {activeTab === "payments" && <PaymentsTab onPendingChange={setPendingPay} adminEmail={adminUser.email} />}
+        {activeTab === "security" && <SecurityTab />}
         {activeTab === "exams"    && <ExamsTab onComposeNew={() => setActiveTab("compose")} />}
         {activeTab === "compose"  && <ComposeTab showToast={adminShowToast} />}
         {activeTab === "vocab"    && <VocabTab />}
