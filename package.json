@@ -12,6 +12,8 @@
     "@marsidev/react-turnstile": "^1.5.0",
     "@supabase/supabase-js": "^2.104.1",
     "@types/dompurify": "^3.0.5",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "boneyard-js": "^1.8.1",
     "dompurify": "^3.4.2",
     "isomorphic-dompurify": "^3.12.0",
