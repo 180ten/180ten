@@ -267,7 +267,12 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
-  }, [user, fetchProfile]);
+    // user.id (not user) — onAuthStateChange replaces the User object on
+    // every TOKEN_REFRESHED, which would tear down + leave the channel
+    // unsubscribed (the lastRegisteredUidRef guard blocks re-subscribe).
+    // Keying on .id only re-runs when the actual identity changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, fetchProfile]);
 
   // ── Anti-account-sharing: register active session + check anomalies ──
   // Fires once per logged-in user. Decoupled from the boot path so a hung
@@ -366,7 +371,11 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
       alive = false;
       if (kickChannel) sb.removeChannel(kickChannel);
     };
-  }, [ready, user]);
+    // user.id (not user) — see profile-channel useEffect above for why.
+    // Token refresh would otherwise tear down the kick channel and the
+    // lastRegisteredUidRef guard would then block re-subscription.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user?.id]);
 
   // Reset the once-per-uid guard when the user signs out.
   useEffect(() => {

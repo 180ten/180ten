@@ -259,7 +259,9 @@ export default function Home() {
   useEffect(() => {
     if (kickedCountdown === null) return;
     if (kickedCountdown === 0) {
-      window.location.href = "/login";
+      // Force signOut even if the Realtime DELETE handler's signOut failed
+      // (network blip, refresh race) — never redirect while still authed.
+      sb.auth.signOut().finally(() => { window.location.href = "/login"; });
       return;
     }
     const t = setTimeout(() => setKickedCountdown((c) => (c ?? 1) - 1), 1000);
@@ -1229,7 +1231,7 @@ export default function Home() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => { window.location.href = "/login"; }}
+              onClick={() => { sb.auth.signOut().finally(() => { window.location.href = "/login"; }); }}
             >
               Đăng nhập lại ngay
             </button>
