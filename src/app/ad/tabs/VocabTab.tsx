@@ -18,7 +18,7 @@ interface VocabEntry {
 type EditingEntry = Partial<VocabEntry> & { examples?: string[] };
 
 const WORD_TYPES = ["名詞","動詞","サ変動詞","形容詞","な形容詞","副詞","助詞","接続詞","感動詞","助動詞","その他"];
-const BATCH = 1000;
+const PAGE_SIZE = 50;
 
 function normalizeVocabWordType(raw: string): string | null {
   if (!raw) return null;
@@ -52,23 +52,19 @@ function normalizeVocabWordType(raw: string): string | null {
   return null;
 }
 
-function dedupeById(list: VocabEntry[]): VocabEntry[] {
-  const byId = new Map<string, VocabEntry>();
-  list.forEach((v) => { if (v.id != null) byId.set(String(v.id), v); });
-  const seen = new Set<string>();
-  return list.filter((v) => {
-    if (v.id == null) return false;
-    const id = String(v.id);
-    if (seen.has(id)) return false;
-    seen.add(id); return true;
-  }).map((v) => byId.get(String(v.id!))!);
+/** Strip characters that would break a PostgREST .ilike() operand. */
+function escapeIlike(q: string): string {
+  return q.replace(/[%,()*]/g, "").trim();
 }
 
 export default function VocabTab() {
-  const [all, setAll]                   = useState<VocabEntry[]>([]);
-  const [filtered, setFiltered]         = useState<VocabEntry[]>([]);
+  // ── Server-side pagination state (replaces in-memory `all` + `filtered`) ──
+  const [rows, setRows]                 = useState<VocabEntry[]>([]);
+  const [total, setTotal]               = useState(0);
+  const [page, setPage]                 = useState(0);
   const [loading, setLoading]           = useState(false);
   const [query, setQuery]               = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [levelFilter, setLevelFilter]   = useState("");
   const [dbStats, setDbStats]           = useState<{ total: number; n5: number; n4: number; n3up: number } | null>(null);
   const [editEntry, setEditEntry]       = useState<EditingEntry | null>(null);
@@ -153,7 +149,7 @@ export default function VocabTab() {
         ? `Đã đính ${res.attachedCount} ví dụ ✓ · ${res.pendingSaved} câu chưa khớp đã lưu vào hàng chờ`
         : `Đã đính ${res.attachedCount} ví dụ vào ${res.vocabUpdated} từ vựng + ${res.grammarUpdated} ngữ pháp ✓`;
       showToast(toastMsg, "success");
-      void loadVocabList(); void loadStats();
+      void loadPage(); void loadStats();
     } catch (err) {
       setExamplesErr(err instanceof AdminApiError ? err.message : "Lỗi không rõ");
     } finally {
@@ -161,74 +157,91 @@ export default function VocabTab() {
     }
   }
 
-  const loadVocabList = useCallback(async (opts?: { moveToEndId?: string | number }) => {
+  // Server-side fetch — only the current page. `examples` deliberately
+  // excluded from the list query (it's a heavy jsonb column unused in
+  // the grid; openVocabForm fetches the full row when needed).
+  const loadPage = useCallback(async () => {
     setLoading(true);
-    let all2: VocabEntry[] = [];
-    let from = 0;
-    while (true) {
-      const { data, error } = await sb
-        .from("vocabulary_library")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: true })
-        .range(from, from + BATCH - 1);
-      if (error) {
-        showToast("Lỗi: " + error.message, "error");
-        setLoading(false);
-        return;
-      }
-      all2 = all2.concat((data ?? []) as VocabEntry[]);
-      if (!data || data.length < BATCH) break;
-      from += BATCH;
-    }
-    all2 = dedupeById(all2);
-    if (opts?.moveToEndId != null) {
-      const idStr = String(opts.moveToEndId);
-      const item = all2.find((v) => String(v.id) === idStr);
-      all2 = all2.filter((v) => String(v.id) !== idStr);
-      if (item) all2.push(item);
-    }
-    setAll(all2);
-    applyFilters(all2, query, levelFilter);
-    setLoading(false);
-  }, [query, levelFilter]);
+    let qb = sb
+      .from("vocabulary_library")
+      .select("id,word,reading,han_viet,word_type,meaning,meaning_jp,jlpt_level", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
-  useEffect(() => {
-    const t = setTimeout(() => { void loadVocabList(); void loadStats(); }, 0);
-    return () => clearTimeout(t);
-  }, [loadVocabList, loadStats]);
-
-  function applyFilters(rows: VocabEntry[], q: string, lv: string) {
-    let res = rows;
-    if (lv) res = res.filter((v) => v.jlpt_level === lv);
-    if (q.trim()) {
-      const lq = q.toLowerCase();
-      res = res.filter((v) =>
-        (v.word || "").includes(q) ||
-        (v.reading || "").includes(q) ||
-        (v.meaning || "").toLowerCase().includes(lq) ||
-        (v.meaning_jp || "").toLowerCase().includes(lq) ||
-        (v.han_viet || "").toLowerCase().includes(lq)
+    if (levelFilter) qb = qb.eq("jlpt_level", levelFilter);
+    const safeQuery = escapeIlike(debouncedQuery);
+    if (safeQuery) {
+      // PostgREST .or() syntax: column.op.value, comma-separated.
+      qb = qb.or(
+        `word.ilike.%${safeQuery}%,` +
+        `reading.ilike.%${safeQuery}%,` +
+        `meaning.ilike.%${safeQuery}%,` +
+        `meaning_jp.ilike.%${safeQuery}%,` +
+        `han_viet.ilike.%${safeQuery}%`,
       );
     }
-    setFiltered(res);
-  }
 
-  const total = all.length;
-  const n5    = all.filter((v) => v.jlpt_level === "N5").length;
-  const n4    = all.filter((v) => v.jlpt_level === "N4").length;
-  const n3up  = all.filter((v) => v.jlpt_level && ["N3","N2","N1"].includes(v.jlpt_level)).length;
+    const { data, count, error } = await qb;
+    if (error) {
+      showToast("Lỗi: " + error.message, "error");
+      setLoading(false);
+      return;
+    }
+    setRows((data ?? []) as VocabEntry[]);
+    setTotal(count ?? 0);
+    setLoading(false);
+  }, [page, levelFilter, debouncedQuery]);
+
+  // Debounce the search input — only fire the server query 300ms after
+  // the user stops typing.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Reset to page 0 when search/filter changes (otherwise user could be
+  // on page 5 of an old result set with no rows in the new one).
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedQuery, levelFilter]);
+
+  // Initial load + every page/filter change.
+  useEffect(() => { void loadPage(); }, [loadPage]);
+  useEffect(() => { void loadStats(); }, [loadStats]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const lvlColor: Record<string, string> = { N5:"#9B59B6",N4:"#3498db",N3:"#2ecc71",N2:"#e67e22",N1:"#e74c3c" };
 
-  function openVocabForm(vocab?: VocabEntry) {
-    setEditingId(vocab?.id ?? null);
-    setEditEntry(vocab
-      ? { ...vocab, examples: Array.isArray(vocab.examples) ? [...vocab.examples] : [] }
-      : { word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", jlpt_level: "", examples: [""] }
-    );
+  async function openVocabForm(vocab?: VocabEntry) {
     setEditErr("");
+    if (!vocab) {
+      setEditingId(null);
+      setEditEntry({ word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", jlpt_level: "", examples: [""] });
+      setEditOpen(true);
+      return;
+    }
+    // Editing an existing row — the list query doesn't include `examples`
+    // (heavy jsonb), so fetch the full row now. Open the modal immediately
+    // with what we have so the user sees something instantly.
+    setEditingId(vocab.id ?? null);
+    setEditEntry({ ...vocab, examples: [] });
     setEditOpen(true);
+    if (vocab.id != null) {
+      const { data, error } = await sb
+        .from("vocabulary_library")
+        .select("*")
+        .eq("id", vocab.id)
+        .maybeSingle();
+      if (error) { showToast("Lỗi tải ví dụ: " + error.message, "error"); return; }
+      if (data) {
+        setEditEntry({
+          ...(data as VocabEntry),
+          examples: Array.isArray((data as VocabEntry).examples) ? [...(data as VocabEntry).examples!] : [],
+        });
+      }
+    }
   }
 
   function setExamples(exs: string[]) {
@@ -250,7 +263,6 @@ export default function VocabTab() {
       jlpt_level: editEntry.jlpt_level || null as unknown as string,
       examples:   (editEntry.examples ?? []).filter(Boolean),
     };
-    const capturedId = editingId;
     try {
       if (editingId) {
         await adminCall("/api/admin/vocab", { action: "update", id: String(editingId), payload });
@@ -265,7 +277,7 @@ export default function VocabTab() {
     setSaving(false);
     showToast(editingId ? "Đã cập nhật từ vựng ✓" : "Đã thêm từ vựng ✓", "success");
     setEditOpen(false); setEditEntry(null); setEditingId(null);
-    void loadVocabList(capturedId ? { moveToEndId: capturedId } : undefined); void loadStats();
+    void loadPage(); void loadStats();
   }
 
   async function deleteVocab(id: string | number, word: string) {
@@ -277,7 +289,7 @@ export default function VocabTab() {
       return;
     }
     showToast(`Đã xóa "${word}" ✓`, "success");
-    void loadVocabList(); void loadStats();
+    void loadPage(); void loadStats();
   }
 
   // ── Bulk select / delete ──────────────────────────────────────────────
@@ -292,9 +304,9 @@ export default function VocabTab() {
     });
   }
 
-  /** Tick / untick toàn bộ row trong filtered (= những row user đang nhìn thấy). */
+  /** Tick / untick toàn bộ row của trang hiện tại (= những row user đang nhìn thấy). */
   function toggleSelectAllFiltered() {
-    const visibleIds = filtered.map((v) => v.id).filter((x): x is string | number => x != null).map(String);
+    const visibleIds = rows.map((v) => v.id).filter((x): x is string | number => x != null).map(String);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -325,7 +337,7 @@ export default function VocabTab() {
     setSelectedIds(new Set());
     if (failCount === 0) showToast(`Đã xoá ${okCount} từ ✓`, "success");
     else showToast(`Xoá ${okCount}/${ids.length} — ${failCount} lỗi (${lastErr})`, "error");
-    void loadVocabList(); void loadStats();
+    void loadPage(); void loadStats();
   }
 
   async function importVocabExcel(e: React.ChangeEvent<HTMLInputElement>) {
@@ -367,7 +379,7 @@ export default function VocabTab() {
         done += Math.min(50, dataRows.length - i);
       }
       showToast(`Đã import ${done} từ vựng ✓`, "success");
-      void loadVocabList(); void loadStats();
+      void loadPage(); void loadStats();
     } catch (err: unknown) {
       showToast("Lỗi đọc file: " + (err as Error).message, "error");
     }
@@ -394,7 +406,7 @@ export default function VocabTab() {
           <div className="topbar-sub">Quản lý từ vựng — hiển thị trên trang học sinh</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" onClick={() => { void loadVocabList(); void loadStats(); }} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: "#666", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 11, cursor: "pointer" }}>↻ Refresh</button>
+          <button type="button" onClick={() => { void loadPage(); void loadStats(); }} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: "#666", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 11, cursor: "pointer" }}>↻ Refresh</button>
           <button type="button" onClick={() => void downloadTemplate()} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: "#666", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 11, cursor: "pointer" }}>⬇ Template</button>
           <label style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: "#666", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 11, cursor: "pointer" }}>
             📥 Import Excel
@@ -470,24 +482,27 @@ export default function VocabTab() {
       })()}
 
       <div className="stats-row">
-        <div className="stat-card"><div className="n" id="vs-total">{dbStats ? dbStats.total : (loading ? "—" : total)}</div><div className="l">Tổng từ vựng</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#9B59B6" }} id="vs-n5">{dbStats ? dbStats.n5 : (loading ? "—" : n5)}</div><div className="l">N5</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#3498db" }} id="vs-n4">{dbStats ? dbStats.n4 : (loading ? "—" : n4)}</div><div className="l">N4</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#2ecc71" }} id="vs-n3">{dbStats ? dbStats.n3up : (loading ? "—" : n3up)}</div><div className="l">N3 trở lên</div></div>
+        <div className="stat-card"><div className="n" id="vs-total">{dbStats ? dbStats.total : "—"}</div><div className="l">Tổng từ vựng</div></div>
+        <div className="stat-card"><div className="n" style={{ color: "#9B59B6" }} id="vs-n5">{dbStats ? dbStats.n5 : "—"}</div><div className="l">N5</div></div>
+        <div className="stat-card"><div className="n" style={{ color: "#3498db" }} id="vs-n4">{dbStats ? dbStats.n4 : "—"}</div><div className="l">N4</div></div>
+        <div className="stat-card"><div className="n" style={{ color: "#2ecc71" }} id="vs-n3">{dbStats ? dbStats.n3up : "—"}</div><div className="l">N3 trở lên</div></div>
       </div>
 
       <div style={{ margin: "0 22px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input
           className="search-input" id="vocab-search" placeholder="🔍 Tìm từ vựng..." value={query}
-          onChange={(e) => { setQuery(e.target.value); applyFilters(all, e.target.value, levelFilter); }}
+          onChange={(e) => setQuery(e.target.value)}
           style={{ width: 240 }}
         />
         <select id="vocab-level-filter" value={levelFilter}
-          onChange={(e) => { setLevelFilter(e.target.value); applyFilters(all, query, e.target.value); }}
+          onChange={(e) => setLevelFilter(e.target.value)}
           style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid #2a2a2a", background: "#0f0f0f", color: "#e8e8e8", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 12 }}>
           <option value="">Tất cả cấp độ</option>
           {["N5","N4","N3","N2","N1"].map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
+        <span style={{ fontSize: 11, color: "#555" }}>
+          {loading ? "Đang tải..." : `${total.toLocaleString()} từ${(debouncedQuery || levelFilter) ? " (đã lọc)" : ""}`}
+        </span>
       </div>
 
       {/* Bulk-action bar — chỉ hiện khi đã tick ít nhất 1 dòng */}
@@ -515,22 +530,20 @@ export default function VocabTab() {
               <input
                 type="checkbox"
                 aria-label="Chọn tất cả"
-                checked={filtered.length > 0 && filtered.every((v) => v.id != null && selectedIds.has(String(v.id)))}
+                checked={rows.length > 0 && rows.every((v) => v.id != null && selectedIds.has(String(v.id)))}
                 onChange={toggleSelectAllFiltered}
                 style={{ cursor: "pointer" }}
               />
             </th>
             <th>Từ vựng</th><th>Cách đọc</th><th>Âm Hán Việt</th><th>Từ loại</th>
-            <th>Nghĩa VI</th><th>Nghĩa JP</th><th>Ví dụ</th><th>Cấp độ</th><th>Thao tác</th>
+            <th>Nghĩa VI</th><th>Nghĩa JP</th><th>Cấp độ</th><th>Thao tác</th>
           </tr></thead>
           <tbody id="vocab-tbody">
-            {loading && <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: "#444" }}>Đang tải...</td></tr>}
-            {!loading && filtered.length === 0 && (
-              <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: "#444" }}>Chưa có từ vựng nào.</td></tr>
+            {loading && <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#444" }}>Đang tải...</td></tr>}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#444" }}>Chưa có từ vựng nào.</td></tr>
             )}
-            {!loading && filtered.map((v) => {
-              const ex0 = (v.examples || []).slice(0, 1);
-              const moreEx = (v.examples || []).length > 1;
+            {!loading && rows.map((v) => {
               const lc = lvlColor[v.jlpt_level || ""] || "#555";
               const idKey = v.id != null ? String(v.id) : "";
               const checked = !!idKey && selectedIds.has(idKey);
@@ -552,16 +565,12 @@ export default function VocabTab() {
                   <td>{v.meaning || "—"}</td>
                   <td style={{ color: "#d0cfc8" }}>{v.meaning_jp || "—"}</td>
                   <td>
-                    {ex0.map((e, i) => <span key={i} style={{ fontSize: 10, color: "#555" }}>{e}</span>)}
-                    {moreEx && <span style={{ fontSize: 10, color: "#3a3a3a" }}> +{(v.examples!).length - 1}</span>}
-                  </td>
-                  <td>
                     <span style={{ padding: "2px 8px", borderRadius: 99, fontSize: 10, fontWeight: 700, background: lc + "18", color: lc }}>
                       {v.jlpt_level || "—"}
                     </span>
                   </td>
                   <td>
-                    <button type="button" className="act-btn" onClick={() => openVocabForm(v)}>✎ Sửa</button>
+                    <button type="button" className="act-btn" onClick={() => void openVocabForm(v)}>✎ Sửa</button>
                     <button type="button" className="act-btn danger" onClick={() => void deleteVocab(v.id!, v.word)}>Xóa</button>
                   </td>
                 </tr>
@@ -569,6 +578,29 @@ export default function VocabTab() {
             })}
           </tbody>
         </table>
+
+        {/* Pagination bar — server-driven */}
+        {!loading && total > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: "14px 0 4px", fontSize: 12, color: "#888" }}>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: page === 0 ? "#444" : "#bbb", cursor: page === 0 ? "not-allowed" : "pointer", fontSize: 12 }}
+            >
+              ← Trước
+            </button>
+            <span style={{ fontWeight: 600 }}>Trang {page + 1} / {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #2a2a2a", background: "transparent", color: page >= totalPages - 1 ? "#444" : "#bbb", cursor: page >= totalPages - 1 ? "not-allowed" : "pointer", fontSize: 12 }}
+            >
+              Sau →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add / Edit modal */}
