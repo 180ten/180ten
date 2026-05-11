@@ -7,12 +7,30 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ── Tag parsing ──────────────────────────────────────────────────────────
-// Inner content can be plain (e.g. 私) or a furigana block ({(漢字)(かな)}).
-// In the latter case, the "word" is the kanji portion — what we look up
-// against vocabulary_library.word.
+// `inner` is whatever sits between 【...】. The DISPLAY value is always
+// kept verbatim by callers (extractVocabSegments puts it in seg.display).
+// The LOOKUP word, however, must match vocabulary_library.word — so we
+// peel one layer of common wrapping that admins use as visual emphasis:
+//
+//   {(漢字)(かな)}  furigana  → kanji portion
+//   (漢字)           half-paren wrap (e.g. 【(会社)】)
+//   （漢字）          full-width paren wrap
+//
+// Anything else falls through unchanged.
 function extractWordFromTag(inner: string): string {
-  const m = inner.match(/^\{\(([^)]+)\)\([^)]+\)\}$/);
-  return m ? m[1] : inner;
+  // 1) Furigana form  {(漢字)(かな)}
+  const fur = inner.match(/^\{\(([^)]+)\)\([^)]+\)\}$/);
+  if (fur) return fur[1];
+
+  // 2) Half-width parens (...)
+  const par = inner.match(/^\(([^)]+)\)$/);
+  if (par) return par[1];
+
+  // 3) Full-width parens （...）
+  const fpar = inner.match(/^（([^）]+)）$/);
+  if (fpar) return fpar[1];
+
+  return inner;
 }
 
 export function extractTaggedWords(text: string): string[] {
@@ -54,6 +72,8 @@ export function extractVocabSegments(text: string): VocabSegment[] {
     const idx = m.index ?? 0;
     if (idx > last) segments.push({ type: "text", value: text.slice(last, idx) });
     const word = extractWordFromTag(m[1]);
+    // display is m[1] verbatim — wrappers like (), （）, _ stay visible;
+    // only `word` (used for vocabulary_library lookup) gets normalised.
     segments.push({ type: "vocab", word, display: m[1] });
     last = idx + m[0].length;
   }
