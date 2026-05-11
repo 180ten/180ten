@@ -601,9 +601,19 @@ export default function Home() {
       console.warn("[submit] failed to save offline snapshot:", e);
     }
     try {
+      // 1) Compute timeSpent BEFORE submit so the server (which now writes
+      //    exam_results.time_spent) sees the same value the client uses for
+      //    its local snapshot.
+      const times     = exam.getLevelTimes();
+      const readTotal = times.read * 60;
+      const timeSpent = phase === "listen"
+        ? readTotal + Math.max(0, times.listen * 60 - timerSec)
+        : Math.max(0, readTotal - timerSec);
+
       console.log("[submit] calling submitAnswers...");
       const t0 = Date.now();
-      const serverResults = await submitAnswers(inputs);
+      const serverResp = await submitAnswers(inputs, { level: curExam.level, timeSpent });
+      const serverResults = serverResp.results;
       const elapsed = Date.now() - t0;
       const correctCount = Object.values(serverResults).filter((r) => r.is_correct).length;
       const failedCount  = Object.values(serverResults).filter((r) => !r.is_correct && r.score === 0).length;
@@ -633,15 +643,17 @@ export default function Home() {
       exam.setState((s) => ({ ...s, answerKey: fakeAnswerKey, keyTypeMap: examSlotTypes }));
 
       const allKeys = Object.keys(fakeAnswerKey);
-      const correct = allKeys.filter((k) => answers[k] === fakeAnswerKey[k]).length;
-      const total   = allKeys.length;
-      const pct     = total ? Math.round((correct / total) * 100) : 0;
-
-      const times     = exam.getLevelTimes();
-      const readTotal = times.read * 60;
-      const timeSpent = phase === "listen"
-        ? readTotal + Math.max(0, times.listen * 60 - timerSec)
-        : Math.max(0, readTotal - timerSec);
+      // Prefer server's authoritative score; fall back to client compute when
+      // submit-batch fell back to per-question /submit-answer (no aggregate).
+      const correct = serverResp.score.total > 0
+        ? serverResp.score.correct
+        : allKeys.filter((k) => answers[k] === fakeAnswerKey[k]).length;
+      const total   = serverResp.score.total > 0
+        ? serverResp.score.total
+        : allKeys.length;
+      const pct     = serverResp.score.total > 0
+        ? serverResp.score.score_pct
+        : (total ? Math.round((correct / total) * 100) : 0);
 
       const isPrem = isPremiumPlan(profile?.plan);
       const localTs = Date.now();
@@ -661,40 +673,14 @@ export default function Home() {
         saveLocalResult(curExam.name, curExam.level, pct, timeSpent, reportKey, user.id);
       } else {
         // LOGGED-IN (free hoặc premium):
-        //   1) Luôn lưu localStorage trước (đảm bảo không mất lịch sử kể cả khi
-        //      Supabase fail vì RLS, mạng, schema, v.v.).
-        //   2) Sau đó cố gắng đồng bộ lên Supabase.
+        //   1) localStorage cho lịch sử local (instant + offline-safe).
+        //   2) exam_results đã được /api/exam/submit-batch insert server-side
+        //      (RLS now blocks anon writes — see Bước 4 migration). Client
+        //      no longer touches exam_results directly.
         try { localStorage.setItem("jlptbro-report-result-" + reportKey, JSON.stringify(report)); } catch {}
         saveLocalResult(curExam.name, curExam.level, pct, timeSpent, reportKey, user.id);
 
         try {
-          console.log("[submit] inserting exam_result for", { user_id: user.id, exam_id: curExam.id, pct });
-
-          // Try full payload first (with optional cols). On column-not-found,
-          // fall back to a minimal payload so old/partial schemas still work.
-          const fullPayload  = { user_id: user.id, exam_id: curExam.id, score_pct: pct, report_data: report, answers, time_spent: timeSpent };
-          const minPayload   = { user_id: user.id, exam_id: curExam.id, score_pct: pct };
-
-          let { data: ins, error: insErr } = await sb
-            .from("exam_results").insert(fullPayload).select("id").single();
-
-          if (insErr && /column .* schema cache/i.test(insErr.message)) {
-            console.warn("[submit] full insert failed (missing cols), retrying minimal:", insErr.message);
-            ({ data: ins, error: insErr } = await sb
-              .from("exam_results").insert(minPayload).select("id").single());
-          }
-
-          if (insErr) {
-            console.error("[submit] insert exam_result FAILED:", insErr.message, insErr);
-            showToast("Lỗi đồng bộ Supabase: " + insErr.message + " (đã lưu cục bộ)");
-          } else {
-            console.log("[submit] inserted with id:", ins?.id);
-          }
-
-          if (ins?.id) {
-            try { localStorage.setItem("jlptbro-report-result-" + ins.id, JSON.stringify(report)); } catch {}
-          }
-
           // XP/leaderboard remains premium-only
           if (isPrem) {
             const xpEarned = correct * 10;
@@ -706,7 +692,7 @@ export default function Home() {
             }
           }
         } catch (err) {
-          console.error("[exam] cloud save failed (local đã lưu)", err);
+          console.error("[exam] XP rpc failed (local đã lưu)", err);
         }
       }
 

@@ -3,6 +3,7 @@
 
 import { sb } from "@/lib/supabase";
 import type { SanitizedQuestion } from "@/lib/examShuffle";
+import type { ReportData } from "@/lib/examLogic";
 
 // ── Types ─────────────────────────────────────────────────────────────
 export interface SubmitAnswerInput {
@@ -233,18 +234,21 @@ export async function submitAnswer(input: SubmitAnswerInput): Promise<SubmitAnsw
   return submitAnswerWithToken(input, token);
 }
 
-/** Hits POST /api/exam/submit-batch with the given token, returns parsed
- *  results map or throws ExamApiError. Hard 25s timeout for the whole call.
- *  Seed is now derived server-side from cookie+exam_sessions — nothing to
- *  forward from the client. */
+/** Hits POST /api/exam/submit-batch with the given token, returns the
+ *  full response (results + server-built report + score breakdown), or
+ *  throws ExamApiError. Hard 25s timeout. Seed is server-side now so we
+ *  don't forward anything seed-related. */
 async function submitBatchHttp(
   inputs: SubmitAnswerInput[],
   token: string | null,
-): Promise<Record<string, SubmitAnswerResult>> {
+  opts: SubmitAnswersOptions,
+): Promise<SubmitAnswersResponse> {
   const body = JSON.stringify({
     inputs: inputs.map(({ question_id, exam_id, slot_key, submitted_index }) => ({
       question_id, exam_id, slot_key, submitted_index,
     })),
+    level:      opts.level     ?? "",
+    time_spent: opts.timeSpent ?? 0,
   });
 
   return withTimeoutThrow(
@@ -255,8 +259,12 @@ async function submitBatchHttp(
         20_000,
       );
       if (!res.ok) throw new ExamApiError(await readError(res), res.status);
-      const json = (await res.json()) as { results: Record<string, SubmitAnswerResult> };
-      return json.results ?? {};
+      const json = (await res.json()) as Partial<SubmitAnswersResponse>;
+      return {
+        results:     json.results     ?? {},
+        report_data: json.report_data as ReportData,
+        score:       json.score ?? { correct: 0, wrong: 0, skip: 0, total: 0, score_pct: 0 },
+      };
     })(),
     25_000,
     "submitBatchHttp",
@@ -305,9 +313,25 @@ async function submitIndividually(
  * Performance: 100 questions used to be ~30s (100 × 0.3s queued through
  * browser's 6-concurrent limit on dev server). Now it's 1 request, ~500ms.
  */
+/** Request body extras for /submit-batch — the report builder needs the
+ *  exam level, and exam_results.time_spent comes from the client. */
+export interface SubmitAnswersOptions {
+  level?: string;
+  timeSpent?: number;
+}
+
+/** Full server response — results map + server-built report + counts.
+ *  Only `results` was returned before; report/score added in Bước 4. */
+export interface SubmitAnswersResponse {
+  results: Record<string, SubmitAnswerResult>;
+  report_data: ReportData;
+  score: { correct: number; wrong: number; skip: number; total: number; score_pct: number };
+}
+
 export async function submitAnswers(
   inputs: SubmitAnswerInput[],
-): Promise<Record<string, SubmitAnswerResult>> {
+  opts: SubmitAnswersOptions = {},
+): Promise<SubmitAnswersResponse> {
   const t0 = Date.now();
   let token = await getOptionalBearer();
 
@@ -319,20 +343,30 @@ export async function submitAnswers(
   });
 
   // Empty short-circuit
-  if (inputs.length === 0) return {};
+  if (inputs.length === 0) {
+    return { results: {}, report_data: undefined as unknown as ReportData, score: { correct: 0, wrong: 0, skip: 0, total: 0, score_pct: 0 } };
+  }
+
+  // Fallback shape used when /submit-batch fails and we degrade to per-
+  // question /submit-answer (no server-built report — caller rebuilds).
+  const fallbackResp = (results: Record<string, SubmitAnswerResult>): SubmitAnswersResponse => ({
+    results,
+    report_data: undefined as unknown as ReportData,
+    score: { correct: 0, wrong: 0, skip: 0, total: 0, score_pct: 0 },
+  });
 
   // ── Phase 1: try with current token ──
   try {
-    const results = await submitBatchHttp(inputs, token);
+    const resp = await submitBatchHttp(inputs, token, opts);
     console.log("[submitAnswers] phase1 OK", {
       elapsedMs: Date.now() - t0,
-      resultCount: Object.keys(results).length,
+      resultCount: Object.keys(resp.results).length,
     });
-    return results;
+    return resp;
   } catch (err1) {
     if (!(err1 instanceof ExamApiError) || err1.status !== 401) {
       console.warn("[submitAnswers] batch failed, falling back to single-submit:", err1);
-      return submitIndividually(inputs, token);
+      return fallbackResp(await submitIndividually(inputs, token));
     }
     // 401 → fall through to refresh + retry
     console.warn("[submitAnswers] 401 → refreshing session...");
@@ -362,14 +396,14 @@ export async function submitAnswers(
   }
 
   try {
-    const results = await submitBatchHttp(inputs, token);
+    const resp = await submitBatchHttp(inputs, token, opts);
     console.log("[submitAnswers] phase2 OK after refresh", {
       totalMs: Date.now() - t0,
-      resultCount: Object.keys(results).length,
+      resultCount: Object.keys(resp.results).length,
     });
-    return results;
+    return resp;
   } catch (err2) {
     console.warn("[submitAnswers] phase2 batch failed, falling back to single-submit:", err2);
-    return submitIndividually(inputs, token);
+    return fallbackResp(await submitIndividually(inputs, token));
   }
 }

@@ -16,6 +16,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, expectedPosForSlot, type AnswerPositionMap, type RawQuestion } from "@/lib/examShuffle";
 import { hashSHA256 } from "@/lib/serverUtils";
+import { buildReportData } from "@/lib/examLogic";
 
 interface BatchInput {
   question_id: string;
@@ -26,6 +27,10 @@ interface BatchInput {
 
 interface BatchBody {
   inputs?: BatchInput[];
+  /** Exam level — used to build the JLPT/BJT report server-side. */
+  level?: string;
+  /** Seconds spent on the exam — persisted into exam_results.time_spent. */
+  time_spent?: number;
   /** @deprecated — server now derives seed from (cookie, exam_id) via
    *  exam_sessions; the client value is ignored. Field kept so the legacy
    *  request shape doesn't blow up parsing. */
@@ -197,7 +202,61 @@ export async function POST(req: Request): Promise<NextResponse> {
     };
   }
 
-  return NextResponse.json({ results });
+  // ── 6) Build report server-side (single source of truth) ─────────────
+  // The client used to call exam.submitExam(...) + buildReportData(...) and
+  // then sb.from("exam_results").insert(...). Both are now server-side so
+  // the client can't fabricate score_pct or report_data.
+  const inputMap = new Map(inputs.map((i) => [i.slot_key, i]));
+  const slotTypeMap: Record<string, string> = {};
+  const allAnswers:  Record<string, number> = {};
+  const answerKey:   Record<string, number> = {};
+  let correct = 0, wrong = 0, skip = 0;
+  for (const inp of inputs) {
+    const r = results[inp.slot_key];
+    const submitted = inputMap.get(inp.slot_key)?.submitted_index ?? -1;
+    allAnswers[inp.slot_key] = submitted;
+    answerKey[inp.slot_key]  = r.correct_index ?? -1;
+    if (r.is_correct)         correct++;
+    else if (submitted < 0)   skip++;
+    else                      wrong++;
+    const row = byId.get(inp.question_id);
+    if (row) slotTypeMap[inp.slot_key] = row.type;
+  }
+  const total     = inputs.length;
+  const score_pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const level     = typeof body.level === "string" ? body.level : "";
+  const report    = buildReportData(answerKey, allAnswers, level, slotTypeMap);
+
+  // ── 7) Persist exam_results — only for single-exam + logged-in submits.
+  // Target practice (multiple parent exam_ids) and guest sessions skip the
+  // insert; client still gets the report back for local-only history.
+  if (authUserId && examIds.length === 1) {
+    const examIdSingle = examIds[0];
+    const sessionKey   = await hashSHA256(`${authUserId}:${examIdSingle}:${SERVER_SEED_SECRET}`);
+    const { error: insertErr } = await sb.from("exam_results").insert({
+      user_id:     authUserId,
+      exam_id:     examIdSingle,
+      session_key: sessionKey,
+      score_pct,
+      correct,
+      wrong,
+      skip,
+      total,
+      time_spent:  typeof body.time_spent === "number" ? body.time_spent : 0,
+      report_data: report,
+    });
+    // 23505 = duplicate key on session_key — same submission retried, not
+    // an error. Any OTHER error gets logged but doesn't block the response.
+    if (insertErr && (insertErr as { code?: string }).code !== "23505") {
+      console.error("[submit-batch] exam_results insert failed:", insertErr.message);
+    }
+  }
+
+  return NextResponse.json({
+    results,
+    report_data: report,
+    score: { correct, wrong, skip, total, score_pct },
+  });
 }
 
 export function GET()    { return jsonError(405, "Method not allowed"); }
