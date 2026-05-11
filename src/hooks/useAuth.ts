@@ -382,6 +382,11 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     })();
 
     return () => {
+      console.log('[session-kick] cleanup called, removing channel', {
+        hasChannel: !!kickChannel,
+        ready,
+        userId: user?.id,
+      });
       alive = false;
       if (kickChannel) sb.removeChannel(kickChannel);
     };
