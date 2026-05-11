@@ -246,16 +246,25 @@ export default function Home() {
   }
 
   // Anti-account-sharing: listen for "session-kicked" CustomEvent dispatched
-  // by useAuth when /api/session/register evicted an older device. Show a
-  // longer-lived toast (5s instead of 2.8s) so the user notices.
+  // by useAuth's Realtime DELETE handler. Show a blocking modal with a
+  // 5-second countdown then redirect to /login.
+  const [kickedCountdown, setKickedCountdown] = useState<number | null>(null);
+
   useEffect(() => {
-    const onKicked = () => {
-      setToastMsg("⚠️ Tài khoản vừa đăng nhập trên thiết bị mới — thiết bị cũ đã bị đăng xuất.");
-      setTimeout(() => setToastMsg(""), 5000);
-    };
+    const onKicked = () => setKickedCountdown(5);
     window.addEventListener("session-kicked", onKicked);
     return () => window.removeEventListener("session-kicked", onKicked);
   }, []);
+
+  useEffect(() => {
+    if (kickedCountdown === null) return;
+    if (kickedCountdown === 0) {
+      window.location.href = "/login";
+      return;
+    }
+    const t = setTimeout(() => setKickedCountdown((c) => (c ?? 1) - 1), 1000);
+    return () => clearTimeout(t);
+  }, [kickedCountdown]);
 
   async function handleAddToAnki(card: { word: string; reading: string; meaning: string; word_type?: string }) {
     if (!user) { showToast("Đăng nhập để dùng tính năng này"); return; }
@@ -1207,6 +1216,26 @@ export default function Home() {
 
       {/* Toast */}
       {toastMsg && <div className="toast show">{toastMsg}</div>}
+
+      {/* Session-kicked overlay (anti-account-sharing) */}
+      {kickedCountdown !== null && (
+        <div className="kicked-overlay">
+          <div className="kicked-modal">
+            <div className="kicked-icon">⚠️</div>
+            <h2>Tài khoản đã đăng nhập nơi khác</h2>
+            <p>Tài khoản của bạn vừa được đăng nhập từ một thiết bị khác. Bạn sẽ được chuyển về trang đăng nhập sau:</p>
+            <div className="kicked-countdown">{kickedCountdown}</div>
+            <p className="kicked-sub">giây</p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => { window.location.href = "/login"; }}
+            >
+              Đăng nhập lại ngay
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <ExamConfirmModal

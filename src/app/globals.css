@@ -1636,3 +1636,13 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 #admin-app.theme-light .compose-question-list-scroll::-webkit-scrollbar-track{background:#f3f4f6;border-left:1px solid #e5e7eb;}
 #admin-app.theme-light .compose-question-list-scroll::-webkit-scrollbar-thumb{background:#9ca3af;border-color:#f3f4f6;}
 #admin-app.theme-light .compose-question-list-scroll::-webkit-scrollbar-thumb:hover{background:#6b7280;}
+
+/* ── Session-kicked overlay (anti-account-sharing) ── */
+.kicked-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;}
+.kicked-modal{background:#fff;border-radius:20px;padding:40px 36px;max-width:400px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:kickedSlideUp .3s ease;}
+.kicked-icon{font-size:48px;margin-bottom:16px;}
+.kicked-modal h2{font-size:20px;font-weight:800;margin-bottom:10px;color:#1a1a2e;}
+.kicked-modal p{font-size:14px;color:#666;line-height:1.6;margin-bottom:16px;}
+.kicked-countdown{font-size:64px;font-weight:800;color:#f26419;line-height:1;margin:8px 0 4px;}
+.kicked-sub{font-size:14px;color:#999;margin-bottom:24px;}
+@keyframes kickedSlideUp{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
