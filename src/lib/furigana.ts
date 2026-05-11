@@ -1,6 +1,10 @@
 // ── furigana.ts ──────────────────────────────────────────────
 // Text-rendering utilities migrated verbatim from htdocs/index.html
 // ─────────────────────────────────────────────────────────────
+// isomorphic-dompurify wraps the upstream DOMPurify with a JSDOM polyfill
+// when running on Node, so sanitisation works during Next.js SSR/hydration
+// AND in the browser with the same API.
+import DOMPurify from "isomorphic-dompurify";
 
 /** {(漢字)(よみ)} → <ruby>漢字<rt>よみ</rt></ruby> */
 export function parseFurigana(t: string): string {
@@ -17,7 +21,7 @@ const richPairTags = [
   { open: '[right]', close: '[/right]', style: 'display:block;text-align:right;' },
 ];
 
-function renderRichInline(src: string): string {
+export function renderRichInline(src: string): string {
   let out = '';
   let i = 0;
   while (i < src.length) {
@@ -92,6 +96,39 @@ export function renderRich(t: string): string {
   if (!t) return '';
 
   return `<div style="font-size:16px;line-height:2;color:#1a1917;white-space:pre-wrap;overflow-wrap:anywhere;">${renderRichInline(t)}</div>`;
+}
+
+// ── XSS sanitisation ─────────────────────────────────────────
+// renderRich/renderQText/etc. emit HTML strings that get pumped into
+// dangerouslySetInnerHTML. Anything coming from user-authored question
+// content (passages, choices, vocab tags) MUST pass through this filter
+// first so injected <script>, on*-handlers, javascript: URIs etc. are
+// stripped — even after DB writes are locked down by RLS.
+//
+// Allowlist covers everything the renderers above can produce:
+//   - Block: div  (renderRich wrapper, vertical writing block)
+//   - Inline: span, ruby, rt, rp, strong, em, b, i, br
+//   - Attrs: style (size/align/vertical), class, data-word (vocab tags)
+const SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ["div", "span", "ruby", "rt", "rp", "strong", "em", "b", "i", "br"],
+  ALLOWED_ATTR: ["style", "class", "data-word"],
+};
+
+/** Sanitise an HTML fragment with the renderer-aware allowlist. */
+export function sanitizeHtml(html: string): string {
+  if (!html) return "";
+  return DOMPurify.sanitize(html, SANITIZE_CONFIG);
+}
+
+/** renderRich + sanitize — preferred for any dangerouslySetInnerHTML call. */
+export function sanitizedRenderRich(t: string): string {
+  return sanitizeHtml(renderRich(t));
+}
+
+/** renderRichInline + sanitize — for fragments that should NOT add the
+ *  block-level wrapper div (e.g. children inside a parent renderRich div). */
+export function sanitizedRenderRichInline(t: string): string {
+  return sanitizeHtml(renderRichInline(t));
 }
 
 /** (text) → blue underline — kanji, iikae, hyouki */

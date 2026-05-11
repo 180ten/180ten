@@ -3,19 +3,55 @@ import { memo, useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
-  renderQText, renderChoiceText, renderRich,
+  renderQText, renderChoiceText,
+  sanitizeHtml, sanitizedRenderRich, sanitizedRenderRichInline,
   buildMondaiHeader, buildBjtSectionHeader, bjtPartLabel,
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
 import { getFixedHeaderText } from "@/app/ad/compose/composeConstants";
 import {
-  renderVocabTags, stripVocabTags, extractTaggedWords,
+  stripVocabTags, extractTaggedWords, extractVocabSegments,
   lookupVocab, lookupVocabBulk, prefetchVocab,
-  type VocabEntry,
+  type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
+
+// ── Structured vocab-tag renderer ────────────────────────────────────────
+// Splits text into [text | vocab] segments. Each segment is React-rendered
+// in its own <span>, and the inner HTML for each segment passes through a
+// caller-supplied render function whose output MUST already be sanitised.
+//
+// Why structured: React auto-escapes the data-word attribute, so there's
+// no chance of the manual-string-builder fallback letting a stray quote
+// sneak in. Outer container styling is controlled by the parent.
+function VocabSegments({
+  text, renderText, renderVocab,
+}: {
+  text: string;
+  /** Render function for plain text segments. The output is re-sanitised
+   *  inside this component, so callers don't HAVE to sanitise themselves —
+   *  but they may (sanitising twice is a no-op besides cost). */
+  renderText: (s: string) => string;
+  /** Render function for inner content of vocab segments. Defaults to
+   *  `renderText` when not given. Same sanitise-twice contract. */
+  renderVocab?: (s: string) => string;
+}) {
+  const renderV = renderVocab ?? renderText;
+  const segs: VocabSegment[] = extractVocabSegments(text);
+  return (
+    <>
+      {segs.map((seg, i) =>
+        seg.type === "vocab"
+          ? <span key={i} className="vocab-tag" data-word={seg.word}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderV(seg.display)) }} />
+          : <span key={i}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(seg.value)) }} />
+      )}
+    </>
+  );
+}
 
 // ── Audio URL helper ──
 // Strip XSS-relevant chars (<, ") and replace literal spaces with %20.
@@ -394,11 +430,11 @@ function ChoiceBtn({
   return (
     <button className={cls} type="button" aria-pressed={selected} onClick={() => !submitted && onPick(qKey, idx)}>
       {sogoMc
-        ? <span className="choice-media" dangerouslySetInnerHTML={{ __html: text }} />
+        ? <span className="choice-media" dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }} />
         : (
           <>
             <span className="choice-num">{nums[idx] ?? `${idx + 1}`}</span>
-            <span className="choice-label" dangerouslySetInnerHTML={{ __html: renderChoiceText(text, qType) }} />
+            <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(text, qType)) }} />
           </>
         )
       }
@@ -461,7 +497,7 @@ function ExplainPanel({
           <div className="explain-body">
             {tab === 0 && (
               expl
-                ? <div style={{ whiteSpace: "pre-wrap" }} dangerouslySetInnerHTML={{ __html: expl }} />
+                ? <div style={{ whiteSpace: "pre-wrap" }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(expl) }} />
                 : <span className="explain-empty">Chưa có nội dung.</span>
             )}
             {tab === 1 && (
@@ -538,11 +574,6 @@ function QBlock({
   const nums = choices.length <= 3 ? NUMS.slice(0, 3) : NUMS;
   const hasSideImg = !!sideImageUrl;
 
-  // exam: strip 【】 entirely  / review: wrap in clickable spans
-  const renderedQText = qText
-    ? (submitted ? renderVocabTags(qText) : stripVocabTags(qText))
-    : "";
-
   // Tagged words for the auto-vocab grid (review mode only). Combines parent
   // passage + this sub-question's stem so each card surfaces its full context.
   const taggedWords = useMemo(() => {
@@ -560,12 +591,25 @@ function QBlock({
     return out;
   }, [submitted, passageText, qText]);
 
+  // qText render: review mode → structured segments (each text span gets the
+  // qType-specific renderer; vocab span gets renderRichInline). Exam mode →
+  // strip 【】 then renderQText then sanitise as one string.
+  const renderQTextSafe = (s: string) => sanitizeHtml(renderQText(s, qType));
+
   return (
     <div className={`q-block${hasSideImg ? " q-block-has-side-img" : ""}${sogoMc ? " q-bjt-sogo-mc" : ""}${submitted ? " exam-submitted" : ""}`} id={`qb-${qKey}`}>
       <div className="q-question-row">
         <div className="q-num">{num}.</div>
         {qText && (
-          <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQText(renderedQText, qType) }} />
+          submitted
+            ? <span className="q-text">
+                <VocabSegments
+                  text={qText}
+                  renderText={renderQTextSafe}
+                  renderVocab={sanitizedRenderRichInline}
+                />
+              </span>
+            : <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQTextSafe(stripVocabTags(qText)) }} />
         )}
       </div>
       {hasSideImg ? (
@@ -676,22 +720,47 @@ const PassageBlock = memo(function PassageBlock({
 }) {
   const { body, notes } = splitPassageNotes(text);
   const density = getPassageDensity(body || text);
-  // applyTags === true  → review mode  → wrap 【】 in clickable spans
-  // applyTags === false → exam   mode  → strip 【】 entirely (plain text)
-  const prep = (s: string) => renderRich(applyTags ? renderVocabTags(s) : stripVocabTags(s));
+
+  // applyTags=true (review): React-render structured segments inside an
+  // inner <div> that mimics renderRich's wrapper (so .passage-card-body > div
+  // CSS selectors keep matching). Inner segment HTML uses *Inline* renderer
+  // to avoid nested wrappers.
+  // applyTags=false (exam): strip 【】 entirely, then renderRich + sanitise.
+  const renderBody = (s: string) =>
+    applyTags ? null : (
+      <div dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(stripVocabTags(s)) }} />
+    );
 
   return (
     <div
       className={`q-block q-passage-block passage-density-${density}`}
     >
-      {body && <div className="passage-card-body" dangerouslySetInnerHTML={{ __html: prep(body) }} />}
+      {body && (
+        <div className="passage-card-body">
+          {applyTags ? (
+            <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              <VocabSegments text={body} renderText={sanitizedRenderRichInline} />
+            </div>
+          ) : (
+            renderBody(body)
+          )}
+        </div>
+      )}
       {notes.length > 0 && (
         <div className="passage-note-box">
           <div className="passage-note-lines">
             {notes.map((note, idx) => (
               <div className="passage-note-line" key={`${note.marker}-${idx}`}>
                 <span className="passage-note-marker">{note.marker}</span>
-                <span className="passage-note-text" dangerouslySetInnerHTML={{ __html: prep(note.text) }} />
+                <span className="passage-note-text">
+                  {applyTags ? (
+                    <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                      <VocabSegments text={note.text} renderText={sanitizedRenderRichInline} />
+                    </div>
+                  ) : (
+                    renderBody(note.text)
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -773,7 +842,7 @@ function ReadingContent({
 
     if (type !== lastType) {
       elems.push(
-        <div key={`mh-${type}`} dangerouslySetInnerHTML={{ __html: buildMondaiHeader(mondaiMap[type] ?? 1, type) }} />
+        <div key={`mh-${type}`} dangerouslySetInnerHTML={{ __html: sanitizeHtml(buildMondaiHeader(mondaiMap[type] ?? 1, type)) }} />
       );
       lastType = type;
       passageRowsInMondai = 0;
@@ -1003,8 +1072,11 @@ function ListeningContent({
       if (t1) {
         if (t1.mainQuestion) {
           elems.push(
-            <div key={`${id}-t1-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t1.mainQuestion) : stripVocabTags(t1.mainQuestion) }} />
+            <div key={`${id}-t1-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}>
+              {submitted
+                ? <VocabSegments text={t1.mainQuestion} renderText={sanitizeHtml} renderVocab={sanitizedRenderRichInline} />
+                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripVocabTags(t1.mainQuestion)) }} />}
+            </div>
           );
         }
         const key = `${id}-t1`;
@@ -1019,8 +1091,11 @@ function ListeningContent({
       if (t2) {
         if (t2.mainQuestion) {
           elems.push(
-            <div key={`${id}-t2-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}
-              dangerouslySetInnerHTML={{ __html: submitted ? renderVocabTags(t2.mainQuestion) : stripVocabTags(t2.mainQuestion) }} />
+            <div key={`${id}-t2-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}>
+              {submitted
+                ? <VocabSegments text={t2.mainQuestion} renderText={sanitizeHtml} renderVocab={sanitizedRenderRichInline} />
+                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripVocabTags(t2.mainQuestion)) }} />}
+            </div>
           );
         }
         const t2Main = t2.mainQuestion ?? "";

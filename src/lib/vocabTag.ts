@@ -27,12 +27,38 @@ function escapeAttr(s: string): string {
 // Wrap each 【...】 in a clickable span. Inner is kept verbatim so the
 // downstream furigana parser inside renderRich() still emits <ruby> tags
 // from {(A)(B)} forms.
+//
+// PREFERRED: use `extractVocabSegments` + React rendering (auto-escapes
+// data-word) instead of this string-builder. Kept for backwards compat.
 export function renderVocabTags(text: string): string {
   if (!text) return "";
   return text.replace(/【([^】]+)】/g, (_, inner) => {
     const word = extractWordFromTag(inner);
     return `<span class="vocab-tag" data-word="${escapeAttr(word)}">${inner}</span>`;
   });
+}
+
+// Structured-data variant — returns segments so React can render each one
+// with auto-escaped attributes (no manual string concatenation, no chance
+// of forgetting to escape). The `display` field carries the inner content
+// verbatim so downstream renderRich/parseFurigana can still produce ruby.
+export type VocabSegment =
+  | { type: "text";  value: string }
+  | { type: "vocab"; word: string; display: string };
+
+export function extractVocabSegments(text: string): VocabSegment[] {
+  if (!text) return [];
+  const segments: VocabSegment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/【([^】]+)】/g)) {
+    const idx = m.index ?? 0;
+    if (idx > last) segments.push({ type: "text", value: text.slice(last, idx) });
+    const word = extractWordFromTag(m[1]);
+    segments.push({ type: "vocab", word, display: m[1] });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) segments.push({ type: "text", value: text.slice(last) });
+  return segments;
 }
 
 // Strip 【】 brackets entirely, keeping the inner content verbatim. Used in
