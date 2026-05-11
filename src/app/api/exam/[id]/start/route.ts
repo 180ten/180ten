@@ -22,9 +22,11 @@
 
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { jwtVerify } from "jose";
 import { buildBalancedPositionMapForQuestions, sanitizeQuestion, type SanitizedQuestion, type RawQuestion } from "@/lib/examShuffle";
+import { hashSHA256 } from "@/lib/serverUtils";
 
 // Run on Vercel Edge Runtime — lower cold-start, geo-distributed POPs.
 // Verified Edge-safe: Supabase JS v2 uses Web fetch/crypto, examShuffle is
@@ -144,12 +146,68 @@ export async function GET(
   }
   const t1 = Date.now();
 
-  const guestSeed = authUserId ?? crypto.randomUUID();
-  const shuffleSeed = guestSeed;
-
   // 2) Resolve exam id from URL
   const { id: examId } = await ctx.params;
   if (!examId) return jsonError(400, "Missing exam id");
+
+  // 2b) Server-side seed lookup/issue via exam_sessions + HttpOnly cookie.
+  // The shuffle seed is generated and stored on the server — never round-
+  // trips through the client. Identity is the auth user id when logged in,
+  // otherwise an HttpOnly cookie token issued here on first request.
+  const SERVER_SEED_SECRET = process.env.SERVER_SEED_SECRET;
+  if (!SERVER_SEED_SECRET) return jsonError(500, "SERVER_SEED_SECRET is not set");
+
+  const cookieStore = await cookies();
+  let guestToken = cookieStore.get("guest_exam_token")?.value;
+  if (!authUserId && !guestToken) {
+    guestToken = crypto.randomUUID();
+    cookieStore.set("guest_exam_token", guestToken, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge:   60 * 60 * 4,
+      path:     "/",
+    });
+  }
+
+  // Hard-fail if neither identity is available — never silently fall back to
+  // a per-request randomUUID (would let attackers escape the session check).
+  const identity = authUserId ?? guestToken;
+  if (!identity) return jsonError(500, "Failed to create guest session");
+
+  const sessionKey = await hashSHA256(`${identity}:${examId}:${SERVER_SEED_SECRET}`);
+
+  const sessionsClient = createClient(SUPA_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  // Reuse the existing seed if the session is still valid — restarts /start
+  // (e.g. accidental refresh) keep the same shuffle.
+  const { data: existing, error: existingError } = await sessionsClient
+    .from("exam_sessions")
+    .select("seed")
+    .eq("session_key", sessionKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (existingError) {
+    return jsonError(500, `exam_sessions lookup failed: ${existingError.message}`);
+  }
+
+  const seed = existing?.seed ?? crypto.randomUUID();
+  const { error: upsertError } = await sessionsClient.from("exam_sessions").upsert(
+    {
+      session_key: sessionKey,
+      seed,
+      exam_id:     examId,
+      expires_at:  new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+    },
+    { onConflict: "session_key" },
+  );
+  if (upsertError) {
+    return jsonError(500, `exam_sessions upsert failed: ${upsertError.message}`);
+  }
+
+  const shuffleSeed = seed;
 
   // 3) Cached fetch — exam metadata + raw question rows
   let cacheMissed = false;
@@ -227,14 +285,13 @@ export async function GET(
   console.log(`[exam/start] sanitize: ${t4 - t3}ms (rows=${rows.length}, slots=${allSlotKeys.length})`);
   console.log(`[exam/start] TOTAL: ${t4 - t0}ms (examId=${examId})`);
 
+  // The seed is NOT returned to the client — submit-batch rederives it
+  // from (cookie identity, exam_id, secret) via exam_sessions lookup.
   return NextResponse.json({
     questions: sanitized,
     slotKeys: allSlotKeys,
     slotTypeMap,
     slotToQuestionId,
-    // The client forwards this on submit so the server can re-derive the
-    // same shuffled positions used when the exam was opened.
-    guestSeed,
   });
 }
 

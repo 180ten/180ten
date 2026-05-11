@@ -7,11 +7,18 @@
 //
 // Request body:  { level: "N1"|...|"BJT", mondaiType: string, count: number }
 // Response:      { questions, slotKeys, slotTypeMap, slotToQuestionId,
-//                  slotToExamId, guestSeed, virtualExam }
+//                  slotToExamId, virtualExam }
+//
+// SECURITY (Bước 3 ext): seed lookup is now identical to /start —
+// per (identity, parent_exam_id) row in exam_sessions. The legacy
+// `guestSeed` field is no longer returned to the client; submit-batch
+// rederives the seed for each parent exam_id at grading time.
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, sanitizeQuestion, type AnswerPositionMap, type SanitizedQuestion, type RawQuestion } from "@/lib/examShuffle";
+import { hashSHA256 } from "@/lib/serverUtils";
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -47,7 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // 2) Auth (optional) — every session gets a seed the client can reuse when submitting
+  // 2) Auth (optional) + cookie identity (matches /start logic)
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
   let authUserId: string | null = null;
@@ -55,7 +62,24 @@ export async function POST(req: Request): Promise<NextResponse> {
     const { data: userRes } = await sb.auth.getUser(token);
     if (userRes?.user) authUserId = userRes.user.id;
   }
-  const guestSeed = authUserId ?? crypto.randomUUID();
+
+  const SERVER_SEED_SECRET = process.env.SERVER_SEED_SECRET;
+  if (!SERVER_SEED_SECRET) return jsonError(500, "SERVER_SEED_SECRET is not set");
+
+  const cookieStore = await cookies();
+  let guestToken = cookieStore.get("guest_exam_token")?.value;
+  if (!authUserId && !guestToken) {
+    guestToken = crypto.randomUUID();
+    cookieStore.set("guest_exam_token", guestToken, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge:   60 * 60 * 4,
+      path:     "/",
+    });
+  }
+  const identity = authUserId ?? guestToken;
+  if (!identity) return jsonError(500, "Failed to create guest session");
 
   // 3) Find published exams of the requested level (used to filter questions)
   const { data: examsData, error: eErr } = await sb
@@ -66,7 +90,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (eErr) return jsonError(500, eErr.message);
   const examIds = (examsData ?? []).map((e) => String(e.id));
   if (examIds.length === 0) {
-    return NextResponse.json({ questions: [], slotKeys: [], slotTypeMap: {}, slotToQuestionId: {}, slotToExamId: {}, guestSeed, virtualExam: { id: "target-empty", name: "Target Practice", level } });
+    return NextResponse.json({ questions: [], slotKeys: [], slotTypeMap: {}, slotToQuestionId: {}, slotToExamId: {}, virtualExam: { id: "target-empty", name: "Target Practice", level } });
   }
 
   // 4) Pull all matching questions across those exams
@@ -85,7 +109,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!rows || rows.length === 0) {
     return NextResponse.json({
       questions: [], slotKeys: [], slotTypeMap: {}, slotToQuestionId: {}, slotToExamId: {},
-      guestSeed, virtualExam: { id: "target-empty", name: "Target Practice", level },
+      virtualExam: { id: "target-empty", name: "Target Practice", level },
       meta: { totalAvailable: 0, sourceExamCount: 0 },
     });
   }
@@ -99,14 +123,59 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
   const picked = arr.slice(0, take) as unknown as (RawQuestion & { exam_id: string })[];
 
-  // 6) Sanitize each question with its OWN parent exam_id as shuffle seed
-  const shuffleUserSeed = guestSeed;
+  // 6) Per parent exam_id: lookup or upsert exam_sessions, get its seed.
+  // Each parent exam keeps its OWN seed — same as /start would issue — so
+  // /submit-batch (which looks up by exam_id) grades correctly.
+  const parentExamIds = Array.from(new Set(picked.map((p) => String(p.exam_id))));
+
+  const seedByExam = new Map<string, string>();
+  // 1 lookup query for all parent exams in this pool
+  const sessionKeysList = await Promise.all(
+    parentExamIds.map((id) => hashSHA256(`${identity}:${id}:${SERVER_SEED_SECRET}`)),
+  );
+  const keyToExam = new Map<string, string>();
+  parentExamIds.forEach((id, i) => keyToExam.set(sessionKeysList[i], id));
+
+  const { data: existingSessions, error: existingErr } = await sb
+    .from("exam_sessions")
+    .select("session_key, seed")
+    .in("session_key", sessionKeysList)
+    .gt("expires_at", new Date().toISOString());
+  if (existingErr) {
+    return jsonError(500, `exam_sessions lookup failed: ${existingErr.message}`);
+  }
+  for (const s of (existingSessions ?? []) as { session_key: string; seed: string }[]) {
+    const examId = keyToExam.get(s.session_key);
+    if (examId) seedByExam.set(examId, s.seed);
+  }
+
+  // For exams without an existing session, mint a new seed and upsert all
+  // (existing + new) so expires_at gets refreshed.
+  const upsertRows: { session_key: string; seed: string; exam_id: string; expires_at: string }[] = [];
+  const newExpiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+  parentExamIds.forEach((id, i) => {
+    if (!seedByExam.has(id)) seedByExam.set(id, crypto.randomUUID());
+    upsertRows.push({
+      session_key: sessionKeysList[i],
+      seed:        seedByExam.get(id)!,
+      exam_id:     id,
+      expires_at:  newExpiresAt,
+    });
+  });
+  const { error: upsertErr } = await sb
+    .from("exam_sessions")
+    .upsert(upsertRows, { onConflict: "session_key" });
+  if (upsertErr) {
+    return jsonError(500, `exam_sessions upsert failed: ${upsertErr.message}`);
+  }
+
+  // 7) Sanitize each question with its OWN parent exam_id's seed
   const sanitized: SanitizedQuestion[] = [];
   const allSlotKeys: string[] = [];
   const slotTypeMap: Record<string, string> = {};
   const slotToQuestionId: Record<string, string> = {};
   const slotToExamId: Record<string, string> = {};
-  const parentExamIds = Array.from(new Set(picked.map((p) => String(p.exam_id))));
+
   const { data: parentRows, error: parentErr } = await sb
     .from("questions")
     .select("id,exam_id,type,level,order_index,data")
@@ -115,7 +184,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const posMaps: Record<string, AnswerPositionMap> = {};
   for (const examId of parentExamIds) {
     const rawRows = ((parentRows ?? []) as unknown as (RawQuestion & { exam_id: string })[]).filter((r) => String(r.exam_id) === examId);
-    posMaps[examId] = buildBalancedPositionMapForQuestions(rawRows, shuffleUserSeed, examId);
+    posMaps[examId] = buildBalancedPositionMapForQuestions(rawRows, seedByExam.get(examId)!, examId);
   }
 
   for (let i = 0; i < picked.length; i++) {
@@ -123,7 +192,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const parentExamId = String(row.exam_id);
     // Override order_index so the synthetic exam renders questions in pulled order
     const rowWithOrder: RawQuestion = { ...row, order_index: i };
-    const { sanitized: sq, slotKeys } = sanitizeQuestion(rowWithOrder, shuffleUserSeed, parentExamId, posMaps[parentExamId]);
+    const { sanitized: sq, slotKeys } = sanitizeQuestion(rowWithOrder, seedByExam.get(parentExamId)!, parentExamId, posMaps[parentExamId]);
     sanitized.push(sq);
     for (const k of slotKeys) {
       allSlotKeys.push(k);
@@ -134,13 +203,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const sourceExamCount = new Set(picked.map((p) => String(p.exam_id))).size;
+  // Seed deliberately omitted from response — submit-batch derives it from
+  // the cookie identity + parent exam_id via exam_sessions.
   return NextResponse.json({
     questions: sanitized,
     slotKeys: allSlotKeys,
     slotTypeMap,
     slotToQuestionId,
     slotToExamId,
-    guestSeed,
     virtualExam: {
       id: `target-${level}-${mondaiType}-${Date.now()}`,
       name: `Target ${level} · ${mondaiType}`,

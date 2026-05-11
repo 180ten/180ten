@@ -350,7 +350,7 @@ export default function Home() {
   const [examSlotTypes, setExamSlotTypes]           = useState<Record<string, string>>({});
   const [examSlotToQId, setExamSlotToQId]           = useState<Record<string, string>>({});
   const [examSlotToExamId, setExamSlotToExamId]     = useState<Record<string, string>>({});
-  const [examGuestSeed, setExamGuestSeed]           = useState<string | null>(null);
+  // Note: legacy guest_seed state removed — seed is server-side via cookie + exam_sessions.
   // ID đề đang load để disable nút + hiện spinner — click "Bắt đầu thi" gọi
   // /api/exam/[id]/start (1-3s), trước đây không có feedback nên cảm giác đơ.
   const [startingExamId, setStartingExamId]         = useState<string | null>(null);
@@ -399,7 +399,6 @@ export default function Home() {
     setExamSlotTypes(started.slotTypeMap);
     setExamSlotToQId(started.slotToQuestionId);
     setExamSlotToExamId({}); // normal exam: all slots use curExam.id (fallback)
-    setExamGuestSeed(started.guestSeed);
 
     // Placeholder answerKey so the QGrid sidebar knows which slots exist.
     // Values are -1 (unreachable) — they're only used after `submitted=true`,
@@ -460,7 +459,6 @@ export default function Home() {
     setExamSlotTypes(pool.slotTypeMap);
     setExamSlotToQId(pool.slotToQuestionId);
     setExamSlotToExamId(pool.slotToExamId);
-    setExamGuestSeed(pool.guestSeed);
 
     const placeholderKey: Record<string, number> = {};
     for (const k of pool.slotKeys) placeholderKey[k] = -1;
@@ -581,7 +579,6 @@ export default function Home() {
         exam_id:        examSlotToExamId[slotKey] ?? curExam.id,
         slot_key:       slotKey,
         submitted_index,
-        ...(examGuestSeed ? { guest_seed: examGuestSeed } : {}),
       });
     }
     console.log("[submit] built inputs:", { count: inputs.length, sample: inputs[0] });
@@ -596,7 +593,7 @@ export default function Home() {
         examId: curExam.id, examName: curExam.name, examLevel: curExam.level,
         inputs, answers, timerSec, phase,
         slotTypes: examSlotTypes, slotKeys: examSlotKeys,
-        guestSeed: examGuestSeed, userId: user?.id ?? null,
+        userId: user?.id ?? null,
         savedAt: Date.now(),
       }));
       console.log("[submit] saved offline snapshot:", pendingKey);

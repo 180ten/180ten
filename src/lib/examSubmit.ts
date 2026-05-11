@@ -10,8 +10,6 @@ export interface SubmitAnswerInput {
   exam_id: string;
   slot_key: string;
   submitted_index: number;
-  /** Required when not logged in — value returned by /start. */
-  guest_seed?: string;
 }
 
 export interface SubmitAnswerResult {
@@ -28,12 +26,6 @@ export interface StartExamResult {
   slotTypeMap: Record<string, string>;
   /** slot_key → parent questions.id (UUID), needed for /submit-answer */
   slotToQuestionId: Record<string, string>;
-  /**
-   * Per-session grading seed returned by /start. The client forwards this
-   * on submit so grading uses the same shuffled positions without waiting
-   * on auth refresh at the end of the exam.
-   */
-  guestSeed: string | null;
 }
 
 export interface TargetPoolResult extends StartExamResult {
@@ -237,22 +229,22 @@ async function submitAnswerWithToken(
 }
 
 export async function submitAnswer(input: SubmitAnswerInput): Promise<SubmitAnswerResult> {
-  const token = input.guest_seed ? null : await getOptionalBearer();
+  const token = await getOptionalBearer();
   return submitAnswerWithToken(input, token);
 }
 
 /** Hits POST /api/exam/submit-batch with the given token, returns parsed
- *  results map or throws ExamApiError. Hard 25s timeout for the whole call. */
+ *  results map or throws ExamApiError. Hard 25s timeout for the whole call.
+ *  Seed is now derived server-side from cookie+exam_sessions — nothing to
+ *  forward from the client. */
 async function submitBatchHttp(
   inputs: SubmitAnswerInput[],
   token: string | null,
-  guestSeed: string | null,
 ): Promise<Record<string, SubmitAnswerResult>> {
   const body = JSON.stringify({
     inputs: inputs.map(({ question_id, exam_id, slot_key, submitted_index }) => ({
       question_id, exam_id, slot_key, submitted_index,
     })),
-    ...(guestSeed ? { guest_seed: guestSeed } : {}),
   });
 
   return withTimeoutThrow(
@@ -317,13 +309,11 @@ export async function submitAnswers(
   inputs: SubmitAnswerInput[],
 ): Promise<Record<string, SubmitAnswerResult>> {
   const t0 = Date.now();
-  const guestSeed = inputs.find((i) => i.guest_seed)?.guest_seed ?? null;
-  let token = guestSeed ? null : await getOptionalBearer();
+  let token = await getOptionalBearer();
 
   console.log("[submitAnswers] starting", {
     hasToken: !!token,
     tokenLen: token?.length ?? 0,
-    hasGuestSeed: !!guestSeed,
     inputCount: inputs.length,
     bearerMs: Date.now() - t0,
   });
@@ -333,7 +323,7 @@ export async function submitAnswers(
 
   // ── Phase 1: try with current token ──
   try {
-    const results = await submitBatchHttp(inputs, token, guestSeed);
+    const results = await submitBatchHttp(inputs, token);
     console.log("[submitAnswers] phase1 OK", {
       elapsedMs: Date.now() - t0,
       resultCount: Object.keys(results).length,
@@ -372,7 +362,7 @@ export async function submitAnswers(
   }
 
   try {
-    const results = await submitBatchHttp(inputs, token, guestSeed);
+    const results = await submitBatchHttp(inputs, token);
     console.log("[submitAnswers] phase2 OK after refresh", {
       totalMs: Date.now() - t0,
       resultCount: Object.keys(results).length,

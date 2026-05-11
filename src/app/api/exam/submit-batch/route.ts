@@ -12,8 +12,10 @@
 // On dev mode this turns 100 × 2-4s into 1 × ~500ms.
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, expectedPosForSlot, type AnswerPositionMap, type RawQuestion } from "@/lib/examShuffle";
+import { hashSHA256 } from "@/lib/serverUtils";
 
 interface BatchInput {
   question_id: string;
@@ -24,7 +26,9 @@ interface BatchInput {
 
 interface BatchBody {
   inputs?: BatchInput[];
-  /** Required for guest sessions — same value used at /start. */
+  /** @deprecated — server now derives seed from (cookie, exam_id) via
+   *  exam_sessions; the client value is ignored. Field kept so the legacy
+   *  request shape doesn't blow up parsing. */
   guest_seed?: string;
 }
 
@@ -92,16 +96,50 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
   }
 
-  // ── 3) Auth resolution (same as single endpoint) ─────────────────────
-  if (!authUserId) {
-    if (tokenInvalid) {
-      return jsonError(401, "Token expired or invalid — refresh session and retry");
-    }
-    if (typeof body.guest_seed !== "string" || body.guest_seed.length < 8) {
-      return jsonError(400, "Missing guest_seed (issued by /start)");
+  // ── 3) Identity resolution + per-exam seed lookup ────────────────────
+  // Seed is server-side only (exam_sessions table, keyed by hashed identity
+  // + exam_id + secret). The legacy `body.guest_seed` is ignored — closing
+  // the brute-force-the-shuffle attack vector.
+  const SERVER_SEED_SECRET = process.env.SERVER_SEED_SECRET;
+  if (!SERVER_SEED_SECRET) return jsonError(500, "SERVER_SEED_SECRET is not set");
+
+  if (!authUserId && tokenInvalid) {
+    return jsonError(401, "Token expired or invalid — refresh session and retry");
+  }
+  const cookieStore = await cookies();
+  const guestToken  = cookieStore.get("guest_exam_token")?.value;
+  const identity    = authUserId ?? guestToken;
+  if (!identity) return jsonError(401, "No valid session — please restart exam");
+
+  const examIds = Array.from(new Set(inputs.map((i) => i.exam_id)));
+  const sessionKeys = await Promise.all(
+    examIds.map((id) => hashSHA256(`${identity}:${id}:${SERVER_SEED_SECRET}`)),
+  );
+  const keyToExam = new Map<string, string>();
+  examIds.forEach((id, i) => keyToExam.set(sessionKeys[i], id));
+
+  const { data: sessions, error: sessionsErr } = await sb
+    .from("exam_sessions")
+    .select("session_key, seed")
+    .in("session_key", sessionKeys)
+    .gt("expires_at", new Date().toISOString());
+  if (sessionsErr) {
+    return jsonError(500, `exam_sessions lookup failed: ${sessionsErr.message}`);
+  }
+
+  const seedByExam = new Map<string, string>();
+  for (const s of (sessions ?? []) as { session_key: string; seed: string }[]) {
+    const examId = keyToExam.get(s.session_key);
+    if (examId) seedByExam.set(examId, s.seed);
+  }
+  // Reject if any exam is missing a session — never silently fall back.
+  for (const examId of examIds) {
+    if (!seedByExam.has(examId)) {
+      return jsonError(400, `Session expired for exam ${examId} — please restart`);
     }
   }
-  const shuffleSeed = authUserId ?? (body.guest_seed as string);
+  // Deliberately do NOT delete sessions here — expires_at handles cleanup,
+  // and keeping them lets retries / re-submits stay consistent.
 
   // ── 4) Fetch all unique questions in ONE DB query ────────────────────
   const uniqueIds = Array.from(new Set(inputs.map((i) => i.question_id)));
@@ -118,7 +156,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   const byId = new Map<string, DbRow>();
   for (const r of rows) byId.set(String(r.id), r as unknown as DbRow);
 
-  const examIds = Array.from(new Set(inputs.map((i) => i.exam_id)));
   const { data: scopeRows, error: scopeErr } = await sb
     .from("questions")
     .select("id,exam_id,type,level,order_index,data")
@@ -128,7 +165,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const posMaps: Record<string, AnswerPositionMap> = {};
   for (const examId of examIds) {
     const rawRows = ((scopeRows ?? []) as unknown as DbRow[]).filter((r) => String(r.exam_id) === examId);
-    posMaps[examId] = buildBalancedPositionMapForQuestions(rawRows, shuffleSeed, examId);
+    posMaps[examId] = buildBalancedPositionMapForQuestions(rawRows, seedByExam.get(examId)!, examId);
   }
 
   // ── 5) Grade each input in memory ────────────────────────────────────
@@ -145,7 +182,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       continue;
     }
 
-    const expected = expectedPosForSlot(row, inp.slot_key, shuffleSeed, inp.exam_id, posMaps[inp.exam_id]);
+    const seed = seedByExam.get(inp.exam_id)!;
+    const expected = expectedPosForSlot(row, inp.slot_key, seed, inp.exam_id, posMaps[inp.exam_id]);
     if (expected === null) {
       results[inp.slot_key] = { is_correct: false, score: 0, correct_index: null };
       continue;

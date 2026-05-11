@@ -18,15 +18,18 @@
 // the post-submit review screen (green/red highlight).
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, expectedPosForSlot, type RawQuestion } from "@/lib/examShuffle";
+import { hashSHA256 } from "@/lib/serverUtils";
 
 interface SubmitBody {
   question_id?: string;
   exam_id?: string;
   slot_key?: string;
   submitted_index?: number;
-  /** Required for guest sessions — the random seed handed back by /start. */
+  /** @deprecated — server now derives the seed from (cookie identity,
+   *  exam_id, server secret) via exam_sessions; the client value is ignored. */
   guest_seed?: string;
 }
 
@@ -72,7 +75,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   } catch {
     return jsonError(400, "Body must be JSON");
   }
-  const { question_id, exam_id, slot_key, submitted_index, guest_seed } = body;
+  const { question_id, exam_id, slot_key, submitted_index } = body;
   // submitted_index === -1 means "reveal-only" (user didn't pick) — the
   // response still includes correct_index so the review screen can highlight it.
   if (
@@ -87,20 +90,30 @@ export async function POST(req: Request): Promise<NextResponse> {
     return jsonError(400, "Missing/invalid: question_id, exam_id, slot_key, submitted_index");
   }
 
-  // Auth resolution:
-  // - Logged-in user with valid token  → use uid as shuffle seed
-  // - Token provided but invalid       → 401 (client should refresh & retry)
-  // - No token, valid guest_seed       → use guest_seed
-  // - No token, no guest_seed          → 400 (true error)
-  if (!authUserId) {
-    if (tokenInvalid) {
-      return jsonError(401, "Token expired or invalid — refresh session and retry");
-    }
-    if (typeof guest_seed !== "string" || guest_seed.length < 8) {
-      return jsonError(400, "Missing guest_seed (issued by /start)");
-    }
+  // Identity + per-exam seed lookup (matches submit-batch).
+  const SERVER_SEED_SECRET = process.env.SERVER_SEED_SECRET;
+  if (!SERVER_SEED_SECRET) return jsonError(500, "SERVER_SEED_SECRET is not set");
+
+  if (!authUserId && tokenInvalid) {
+    return jsonError(401, "Token expired or invalid — refresh session and retry");
   }
-  const shuffleSeed = authUserId ?? (guest_seed as string);
+  const cookieStore = await cookies();
+  const guestToken  = cookieStore.get("guest_exam_token")?.value;
+  const identity    = authUserId ?? guestToken;
+  if (!identity) return jsonError(401, "No valid session — please restart exam");
+
+  const sessionKey = await hashSHA256(`${identity}:${exam_id}:${SERVER_SEED_SECRET}`);
+  const { data: session, error: sessionError } = await sb
+    .from("exam_sessions")
+    .select("seed")
+    .eq("session_key", sessionKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (sessionError) {
+    return jsonError(500, `exam_sessions lookup failed: ${sessionError.message}`);
+  }
+  if (!session) return jsonError(400, "Session expired — please restart exam");
+  const shuffleSeed = (session as { seed: string }).seed;
 
   // 3) Fetch question (service role bypasses RLS)
   const { data: row, error: qErr } = await sb
