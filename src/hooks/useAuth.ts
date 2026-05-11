@@ -237,7 +237,7 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     }
 
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (evt, ses) => {
-      console.log('[useAuth] onAuthStateChange', { evt, hasSession: !!ses, booted });
+      console.log('[useAuth] onAuthStateChange event=', evt, 'hasSession=', !!ses, 'booted=', booted);
       if (evt === 'SIGNED_OUT') {
         void cleanupKickChannel();
         setUser(null); setProfile(null);
