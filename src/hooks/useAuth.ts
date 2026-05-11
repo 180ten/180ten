@@ -336,7 +336,21 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
                 filter: `id=eq.${data.session_id}`,
               },
               async (payload) => {
-                console.log('[session-kick] DELETE event received', payload);
+                // Defense-in-depth: Supabase Realtime postgres_changes
+                // filter on DELETE has historically been unreliable
+                // (events for other rows in the same table can leak
+                // through if REPLICA IDENTITY isn't FULL). Verify the
+                // payload's old.id matches OUR session_id before kicking
+                // ourselves out — otherwise the new device that just
+                // evicted us would also receive its sibling's DELETE
+                // event and sign itself out too.
+                const deletedId = (payload as { old?: { id?: string } }).old?.id;
+                if (deletedId && deletedId !== data.session_id) {
+                  console.log('[session-kick] DELETE for OTHER session', deletedId, '— ignoring');
+                  return;
+                }
+
+                console.log('[session-kick] DELETE event received (OUR session)', payload);
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('session-kicked'));
                 }
