@@ -3,10 +3,11 @@
 // Auth state migrated from the boot IIFE and fetchProfile() in index.html.
 // Manages SB_USER + SB_PROFILE, handles onAuthStateChange, stale-session cleanup.
 // ─────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { sb } from '@/lib/supabase';
 import { SB_STORAGE_KEY } from '@/lib/constants';
+import { getDeviceFingerprint, getDeviceName } from '@/lib/deviceFingerprint';
 
 export interface Profile {
   id: string;
@@ -267,6 +268,102 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
       window.removeEventListener('focus', onVisible);
     };
   }, [user, fetchProfile]);
+
+  // ── Anti-account-sharing: register active session + check anomalies ──
+  // Fires once per logged-in user. Decoupled from the boot path so a hung
+  // /api/session/* request can never block setReady.
+  //
+  // After a successful /register, subscribes to a Supabase Realtime channel
+  // that fires when this device's user_sessions row gets DELETEd by a
+  // sibling /register that exceeded the per-plan cap. On that event we
+  // dispatch session-kicked (UI banner) and then sb.auth.signOut() so the
+  // kicked browser drops back to the login screen.
+  //
+  // Filter is `id=eq.${session_id}` (PK) — Supabase Realtime supports
+  // value filters on any column, but PK is the most reliable choice and
+  // matches the RLS SELECT policy "auth.uid() = user_id".
+  const lastRegisteredUidRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready || !user) return;
+    if (lastRegisteredUidRef.current === user.id) return;
+    lastRegisteredUidRef.current = user.id;
+
+    let alive = true;
+    let kickChannel: ReturnType<typeof sb.channel> | null = null;
+
+    (async () => {
+      try {
+        const deviceId   = await getDeviceFingerprint();
+        const deviceName = getDeviceName();
+        const ses        = await sb.auth.getSession();
+        const token      = ses.data.session?.access_token;
+        if (!token || !alive) return;
+
+        // Register — await so we know if a sibling session got kicked.
+        const res = await fetch('/api/session/register', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body:    JSON.stringify({ device_id: deviceId, device_name: deviceName }),
+        });
+        if (!alive || !res.ok) return;
+
+        const data = await res.json() as { kicked?: boolean; session_id?: string };
+        if (data.kicked && typeof window !== 'undefined') {
+          console.warn('[useAuth] session register: an older device was kicked');
+          window.dispatchEvent(new CustomEvent('session-kicked'));
+        }
+
+        // Subscribe to Realtime DELETE on THIS device's session row. When
+        // a sibling /register evicts us, we sign out immediately.
+        if (data.session_id && alive) {
+          kickChannel = sb
+            .channel(`session-kick:${user.id}:${data.session_id}`)
+            .on(
+              'postgres_changes',
+              {
+                event:  'DELETE',
+                schema: 'public',
+                table:  'user_sessions',
+                filter: `id=eq.${data.session_id}`,
+              },
+              async () => {
+                console.warn('[useAuth] this device was kicked → signing out');
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('session-kicked'));
+                }
+                // Brief delay so the toast paints before the page reloads.
+                await new Promise((r) => setTimeout(r, 300));
+                try { await sb.auth.signOut(); } catch { /* ignore */ }
+              },
+            )
+            .subscribe();
+        }
+
+        // Anomaly check — fire-and-forget, never block.
+        fetch('/api/session/check-anomaly', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body:    JSON.stringify({
+            device_id:  deviceId,
+            timezone:   Intl.DateTimeFormat().resolvedOptions().timeZone,
+            user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          }),
+        }).catch(() => { /* silent */ });
+      } catch (e) {
+        console.warn('[useAuth] session register/anomaly failed:', e);
+      }
+    })();
+
+    return () => {
+      alive = false;
+      if (kickChannel) sb.removeChannel(kickChannel);
+    };
+  }, [ready, user]);
+
+  // Reset the once-per-uid guard when the user signs out.
+  useEffect(() => {
+    if (!user) lastRegisteredUidRef.current = null;
+  }, [user]);
 
   return { user, profile, ready, refetchProfile };
 }

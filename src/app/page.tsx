@@ -245,6 +245,18 @@ export default function Home() {
     setTimeout(() => setToastMsg(""), 2800);
   }
 
+  // Anti-account-sharing: listen for "session-kicked" CustomEvent dispatched
+  // by useAuth when /api/session/register evicted an older device. Show a
+  // longer-lived toast (5s instead of 2.8s) so the user notices.
+  useEffect(() => {
+    const onKicked = () => {
+      setToastMsg("⚠️ Tài khoản vừa đăng nhập trên thiết bị mới — thiết bị cũ đã bị đăng xuất.");
+      setTimeout(() => setToastMsg(""), 5000);
+    };
+    window.addEventListener("session-kicked", onKicked);
+    return () => window.removeEventListener("session-kicked", onKicked);
+  }, []);
+
   async function handleAddToAnki(card: { word: string; reading: string; meaning: string; word_type?: string }) {
     if (!user) { showToast("Đăng nhập để dùng tính năng này"); return; }
     const deckName = exam.curExam?.name ?? "Ôn thi JLPT";
