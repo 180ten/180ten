@@ -54,3 +54,22 @@ export async function adminGet<T = unknown>(path: string): Promise<T> {
   if (!res.ok) throw new AdminApiError(res.status, await readError(res));
   return (await res.json()) as T;
 }
+
+// ── Exam + question writes (service-role via /api/admin/exams) ─────────
+// Direct sb.from("exams"|"questions").upsert() from the client is blocked by
+// RLS — these helpers route writes through the admin endpoint where the
+// service role bypasses RLS.
+
+export async function adminUpsertExam(examRow: Record<string, unknown>): Promise<void> {
+  await adminCall("/api/admin/exams", { action: "upsert_exam", examRow });
+}
+
+export async function adminUpsertQuestions(questions: Record<string, unknown>[]): Promise<void> {
+  // Server caps at 50 per call; chunk client-side to match.
+  for (let i = 0; i < questions.length; i += 50) {
+    await adminCall("/api/admin/exams", {
+      action: "upsert_questions",
+      questions: questions.slice(i, i + 50),
+    });
+  }
+}

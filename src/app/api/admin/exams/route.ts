@@ -3,17 +3,58 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdmin, adminErrorResponse } from "@/lib/supabase-admin";
 
-interface Body {
-  action: "toggle_publish" | "toggle_premium" | "delete";
-  exam_id: string;
-  /** required for toggle_publish/toggle_premium: the new value */
-  value?: boolean;
+type Body =
+  | { action: "toggle_publish" | "toggle_premium"; exam_id: string; value?: boolean }
+  | { action: "delete"; exam_id: string }
+  | { action: "upsert_exam"; examRow: Record<string, unknown> }
+  | { action: "upsert_questions"; questions: Record<string, unknown>[] };
+
+// Allowlist of exam columns the client may set — keeps unknown / sensitive
+// fields out of the DB even if the caller is admin-authenticated.
+const EXAM_ALLOWED = new Set([
+  "id", "name", "level", "question_count",
+  "is_published", "is_premium", "audio_url", "year",
+]);
+const QUESTION_ALLOWED = new Set([
+  "id", "exam_id", "type", "level", "order_index", "data",
+]);
+function pickAllowed<T extends Record<string, unknown>>(input: T, allowed: Set<string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) if (allowed.has(k)) out[k] = v;
+  return out;
 }
 
 export async function POST(req: Request) {
   try {
     const { service } = await requireAdmin(req);
     const body = (await req.json()) as Body;
+
+    if (body.action === "upsert_exam") {
+      if (!body.examRow || typeof body.examRow !== "object") {
+        return NextResponse.json({ error: "examRow required" }, { status: 400 });
+      }
+      const cleaned = pickAllowed(body.examRow, EXAM_ALLOWED);
+      const { error } = await service.from("exams").upsert(cleaned);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const id = cleaned.id;
+      if (typeof id === "string") revalidateTag(`exam-${id}`, "max");
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "upsert_questions") {
+      if (!Array.isArray(body.questions) || body.questions.length === 0) {
+        return NextResponse.json({ error: "questions required" }, { status: 400 });
+      }
+      // Hard cap chunk size at 50 — matches the client chunking and keeps
+      // a single request payload bounded.
+      if (body.questions.length > 50) {
+        return NextResponse.json({ error: "max 50 questions per call" }, { status: 400 });
+      }
+      const cleaned = body.questions.map((q) => pickAllowed(q, QUESTION_ALLOWED));
+      const { error } = await service.from("questions").upsert(cleaned);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, count: cleaned.length });
+    }
 
     if (!body?.exam_id) return NextResponse.json({ error: "exam_id required" }, { status: 400 });
 

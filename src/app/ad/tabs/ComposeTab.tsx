@@ -5,6 +5,7 @@
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { sb } from "@/lib/supabase";
+import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
 import {
   C, iBase, taBase,
@@ -1348,17 +1349,27 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
 	      audio_url: audioUrl || null,
 	      year: parseInt(exam.year) || null,
 	    };
-    const { error: eErr } = await sb.from("exams").upsert(examRow as Record<string, unknown>);
-    if (eErr) { console.error("exam upsert error:", eErr); setStatus("error"); setErrMsg("Lỗi upsert exam: " + eErr.message); return; }
+    // Routes through /api/admin/exams (service role) — RLS now blocks
+    // direct anon writes on exams + questions.
+    try {
+      await adminUpsertExam(examRow as Record<string, unknown>);
+    } catch (e) {
+      const msg = e instanceof AdminApiError ? e.message : (e as Error).message;
+      console.error("exam upsert error:", msg);
+      setStatus("error"); setErrMsg("Lỗi upsert exam: " + msg); return;
+    }
     const qs = questions.map((q, i) => ({
       id: q.id, exam_id: exam.id, type: q.type,
       level: q.level || exam.level,
       order_index: q.order_index ?? i,
       data: q,
     }));
-    for (let i = 0; i < qs.length; i += 50) {
-      const { error: qErr } = await sb.from("questions").upsert(qs.slice(i, i+50) as Record<string, unknown>[]);
-      if (qErr) { console.error("questions upsert error:", qErr); setStatus("error"); setErrMsg("Lỗi upsert câu hỏi: " + qErr.message); return; }
+    try {
+      await adminUpsertQuestions(qs as Record<string, unknown>[]);
+    } catch (e) {
+      const msg = e instanceof AdminApiError ? e.message : (e as Error).message;
+      console.error("questions upsert error:", msg);
+      setStatus("error"); setErrMsg("Lỗi upsert câu hỏi: " + msg); return;
     }
     // Invalidate the Next.js data-cache for /api/exam/<id>/start so learners
     // see the new questions immediately. Failure here is non-fatal — cache
