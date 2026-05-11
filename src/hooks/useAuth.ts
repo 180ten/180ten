@@ -125,6 +125,67 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     if (user) await fetchProfile(user);
   }, [user, fetchProfile]);
 
+  // ── Session-kick Realtime channel (ref-stable, lifecycle-decoupled) ──
+  // Held in refs so it survives ANY useEffect re-run (token refresh,
+  // user-object reference flicker, transient setUser(null)). Subscribe is
+  // idempotent (skip if already subscribed for the same sessionId);
+  // cleanup runs only on actual sign-out.
+  const kickChannelRef   = useRef<ReturnType<typeof sb.channel> | null>(null);
+  const kickSessionIdRef = useRef<string | null>(null);
+
+  const subscribeKickChannel = useCallback(async (sessionId: string, userId: string) => {
+    if (kickSessionIdRef.current === sessionId && kickChannelRef.current) {
+      return; // already subscribed for this session
+    }
+    if (kickChannelRef.current) {
+      await sb.removeChannel(kickChannelRef.current);
+      kickChannelRef.current = null;
+    }
+    kickSessionIdRef.current = sessionId;
+    console.log('[session-kick] subscribing for session_id=', sessionId);
+    kickChannelRef.current = sb
+      .channel(`session-kick:${userId}:${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'DELETE',
+          schema: 'public',
+          table:  'user_sessions',
+          filter: `id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          // Defense-in-depth: even with REPLICA IDENTITY FULL, only act on
+          // OUR session's deletion — the new device that just evicted us
+          // shares user_id and could otherwise see this DELETE too.
+          const deletedId = (payload as { old?: { id?: string } }).old?.id;
+          if (deletedId && deletedId !== sessionId) {
+            console.log('[session-kick] DELETE for OTHER session', deletedId, '— ignoring');
+            return;
+          }
+          console.log('[session-kick] DELETE event received (OUR session)', payload);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('session-kicked'));
+          }
+          await new Promise((r) => setTimeout(r, 300));
+          console.log('[session-kick] calling signOut...');
+          const { error } = await sb.auth.signOut();
+          console.log('[session-kick] signOut result', { error });
+        },
+      )
+      .subscribe((status, err) => {
+        console.log('[session-kick] channel subscribe status=', status, 'err=', err);
+      });
+  }, []);
+
+  const cleanupKickChannel = useCallback(async () => {
+    if (kickChannelRef.current) {
+      console.log('[session-kick] cleanup channel (sign-out path)');
+      await sb.removeChannel(kickChannelRef.current);
+      kickChannelRef.current = null;
+      kickSessionIdRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     console.log('[useAuth] effect MOUNT');
     cleanStaleSession();
@@ -178,11 +239,13 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (evt, ses) => {
       console.log('[useAuth] onAuthStateChange', { evt, hasSession: !!ses, booted });
       if (evt === 'SIGNED_OUT') {
+        void cleanupKickChannel();
         setUser(null); setProfile(null);
         if (!booted) { booted = true; clearTimeout(safetyTimer); setReady(true); }
         return;
       }
       if (evt === 'TOKEN_REFRESHED' && !ses) {
+        void cleanupKickChannel();
         try { localStorage.removeItem(SB_STORAGE_KEY); } catch {}
         setUser(null); setProfile(null);
         if (!booted) { booted = true; clearTimeout(safetyTimer); setReady(true); }
@@ -294,7 +357,6 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     lastRegisteredUidRef.current = user.id;
 
     let alive = true;
-    let kickChannel: ReturnType<typeof sb.channel> | null = null;
 
     (async () => {
       try {
@@ -313,57 +375,19 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
         if (!alive || !res.ok) return;
 
         const data = await res.json() as { kicked?: boolean; session_id?: string };
-        // Note: do NOT dispatch session-kicked here. `kicked: true` means
-        // this device just evicted an older one — THIS device should
-        // continue normally. The evicted device finds out via the
-        // Realtime DELETE handler below and signs itself out there.
+        // kicked: true here means THIS device evicted an older one — do
+        // NOT dispatch session-kicked. The evicted device finds out via
+        // Realtime and signs itself out there.
         if (data.kicked) {
           console.log('[useAuth] register: this device evicted an older session');
         }
 
-        // Subscribe to Realtime DELETE on THIS device's session row. When
-        // a sibling /register evicts us, we sign out immediately.
+        // Channel lives on a hook-scope ref so this useEffect's lifecycle
+        // (re-runs on token refresh / user-ref flicker) can NEVER tear
+        // down the subscription mid-flight. Cleanup runs only on actual
+        // sign-out via the onAuthStateChange handler below.
         if (data.session_id && alive) {
-          console.log('[session-kick] subscribing for session_id=', data.session_id);
-          kickChannel = sb
-            .channel(`session-kick:${user.id}:${data.session_id}`)
-            .on(
-              'postgres_changes',
-              {
-                event:  'DELETE',
-                schema: 'public',
-                table:  'user_sessions',
-                filter: `id=eq.${data.session_id}`,
-              },
-              async (payload) => {
-                // Defense-in-depth: Supabase Realtime postgres_changes
-                // filter on DELETE has historically been unreliable
-                // (events for other rows in the same table can leak
-                // through if REPLICA IDENTITY isn't FULL). Verify the
-                // payload's old.id matches OUR session_id before kicking
-                // ourselves out — otherwise the new device that just
-                // evicted us would also receive its sibling's DELETE
-                // event and sign itself out too.
-                const deletedId = (payload as { old?: { id?: string } }).old?.id;
-                if (deletedId && deletedId !== data.session_id) {
-                  console.log('[session-kick] DELETE for OTHER session', deletedId, '— ignoring');
-                  return;
-                }
-
-                console.log('[session-kick] DELETE event received (OUR session)', payload);
-                if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('session-kicked'));
-                }
-                // Brief delay so the toast paints before the page reloads.
-                await new Promise((r) => setTimeout(r, 300));
-                console.log('[session-kick] calling signOut...');
-                const { error } = await sb.auth.signOut();
-                console.log('[session-kick] signOut result', { error });
-              },
-            )
-            .subscribe((status, err) => {
-              console.log('[session-kick] channel subscribe status=', status, 'err=', err);
-            });
+          await subscribeKickChannel(data.session_id, user.id);
         }
 
         // Anomaly check — fire-and-forget, never block.
@@ -382,17 +406,10 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
     })();
 
     return () => {
-      console.log('[session-kick] cleanup called, removing channel', {
-        hasChannel: !!kickChannel,
-        ready,
-        userId: user?.id,
-      });
+      // Only flag stale work — the ref-held channel is owned by the hook
+      // (cleaned up on sign-out via onAuthStateChange).
       alive = false;
-      if (kickChannel) sb.removeChannel(kickChannel);
     };
-    // user.id (not user) — see profile-channel useEffect above for why.
-    // Token refresh would otherwise tear down the kick channel and the
-    // lastRegisteredUidRef guard would then block re-subscription.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, user?.id]);
 
