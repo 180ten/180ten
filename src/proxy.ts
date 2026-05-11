@@ -31,6 +31,16 @@ const limiters = {
 
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+
+  // Exempt submit endpoints — these are the user's most important action
+  // (saving the exam result), not an abuse-prone surface. Blocking them
+  // with 429 cost real submissions in prod when the 15/60s exam limit
+  // tripped. Grading is server-side anyway, so abuse here just wastes
+  // the attacker's time.
+  if (path.startsWith("/api/exam/submit-batch") || path.startsWith("/api/exam/submit-answer")) {
+    return NextResponse.next();
+  }
+
   const [limiter, group] =
     path.startsWith("/api/admin") ? [limiters.admin, "admin"] :
     path.startsWith("/api/exam")  ? [limiters.exam,  "exam"]  :
