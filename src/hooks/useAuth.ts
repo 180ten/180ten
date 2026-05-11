@@ -308,9 +308,12 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
         if (!alive || !res.ok) return;
 
         const data = await res.json() as { kicked?: boolean; session_id?: string };
-        if (data.kicked && typeof window !== 'undefined') {
-          console.warn('[useAuth] session register: an older device was kicked');
-          window.dispatchEvent(new CustomEvent('session-kicked'));
+        // Note: do NOT dispatch session-kicked here. `kicked: true` means
+        // this device just evicted an older one — THIS device should
+        // continue normally. The evicted device finds out via the
+        // Realtime DELETE handler below and signs itself out there.
+        if (data.kicked) {
+          console.log('[useAuth] register: this device evicted an older session');
         }
 
         // Subscribe to Realtime DELETE on THIS device's session row. When
