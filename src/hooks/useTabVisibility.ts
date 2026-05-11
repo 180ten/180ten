@@ -3,9 +3,12 @@ import { useEffect } from "react";
 import { sb } from "@/lib/supabase";
 
 /**
- * Combined visibility/focus handler that fixes Chrome background-tab freeze:
- * - Refreshes Supabase auth session when tab becomes visible (or window focused).
- * - Reconnects Supabase realtime channels (browsers close idle WebSockets).
+ * Wakes up Supabase realtime sockets that browsers close on idle background
+ * tabs. Auth-token freshness is left to the supabase-js
+ * `autoRefreshToken: true` setting — calling refreshSession() here used to
+ * race with fresh-login token storage writes and trigger Supabase's
+ * "compromised refresh token" detection on focus events right after a new
+ * login, signing the user out immediately.
  *
  * Safe to mount once at app root.
  */
@@ -18,9 +21,7 @@ export function useTabVisibility(): void {
       const now = Date.now();
       if (now - last < THROTTLE_MS) return;
       last = now;
-      // refreshSession() actually requests a new access token from Supabase
-      // (getSession() only reads in-memory state and won't fix an expired token).
-      void sb.auth.refreshSession();
+      // Auth refresh deliberately removed — see header comment.
       try {
         const rt = sb.realtime as unknown as { isConnected?: () => boolean; connect?: () => void };
         if (rt.connect && rt.isConnected && !rt.isConnected()) rt.connect();
