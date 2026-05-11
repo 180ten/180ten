@@ -316,6 +316,7 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
         // Subscribe to Realtime DELETE on THIS device's session row. When
         // a sibling /register evicts us, we sign out immediately.
         if (data.session_id && alive) {
+          console.log('[session-kick] subscribing for session_id=', data.session_id);
           kickChannel = sb
             .channel(`session-kick:${user.id}:${data.session_id}`)
             .on(
@@ -326,17 +327,21 @@ export function useAuth(): AuthState & { refetchProfile: () => Promise<void> } {
                 table:  'user_sessions',
                 filter: `id=eq.${data.session_id}`,
               },
-              async () => {
-                console.warn('[useAuth] this device was kicked → signing out');
+              async (payload) => {
+                console.log('[session-kick] DELETE event received', payload);
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new CustomEvent('session-kicked'));
                 }
                 // Brief delay so the toast paints before the page reloads.
                 await new Promise((r) => setTimeout(r, 300));
-                try { await sb.auth.signOut(); } catch { /* ignore */ }
+                console.log('[session-kick] calling signOut...');
+                const { error } = await sb.auth.signOut();
+                console.log('[session-kick] signOut result', { error });
               },
             )
-            .subscribe();
+            .subscribe((status, err) => {
+              console.log('[session-kick] channel subscribe status=', status, 'err=', err);
+            });
         }
 
         // Anomaly check — fire-and-forget, never block.
