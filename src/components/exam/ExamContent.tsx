@@ -606,7 +606,7 @@ function QBlock({
                 <VocabSegments
                   text={qText}
                   renderText={renderQTextSafe}
-                  renderVocab={sanitizedRenderRichInline}
+                  renderVocab={renderQTextSafe}
                 />
               </span>
             : <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQTextSafe(stripVocabTags(qText)) }} />
