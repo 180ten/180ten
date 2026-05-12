@@ -361,23 +361,23 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
 
   if (mode === "select-type") {
     const TYPES: {
-      type: ChallengeType; icon: string; iconBg: string; iconColor: string;
+      type: ChallengeType; icon: string; iconImg?: string; iconBg: string; iconColor: string;
       label: string; desc: string;
       exampleFrom: string; exampleArrow: string; exampleTo: string; exampleToColor: string; exampleToFont?: string;
       stat: string; statColor: string; duration: string;
       examplePreview?: "icons";
     }[] = [
-      { type: 1, icon: "🪜", iconBg: "#fff0e8", iconColor: "#f26419",
+      { type: 1, icon: "🪜", iconImg: "/challenge/dang1.png", iconBg: "#fff0e8", iconColor: "#f26419",
         label: "Dạng 1 – Recall tiếng Nhật", desc: "",
         exampleFrom: "Cầu thang", exampleArrow: "→", exampleTo: "階段", exampleToColor: "#f26419",
         exampleToFont: "'Noto Sans JP',sans-serif",
         stat: "Hiệu quả cao", statColor: "#f26419", duration: "5–7 phút" },
-      { type: 2, icon: "📖", iconBg: "#e3f2fd", iconColor: "#4a90d9",
+      { type: 2, icon: "📖", iconImg: "/challenge/dang2.png", iconBg: "#e3f2fd", iconColor: "#4a90d9",
         label: "Dạng 2 – Recall Furigana", desc: "",
         exampleFrom: "階段", exampleArrow: "→", exampleTo: "かいだん", exampleToColor: "#4a90d9",
         exampleToFont: "'Noto Sans JP',sans-serif",
         stat: "Hiệu quả cao", statColor: "#4a90d9", duration: "5–7 phút" },
-      { type: 3, icon: "💬", iconBg: "#e8f5e9", iconColor: "#16a34a",
+      { type: 3, icon: "💬", iconImg: "/challenge/dang3.png", iconBg: "#e8f5e9", iconColor: "#16a34a",
         label: "Dạng 3 – Recall nghĩa", desc: "",
         exampleFrom: "階段", exampleArrow: "→", exampleTo: "Đoạn giai", exampleToColor: "#16a34a",
         stat: "Trung bình", statColor: "#6b6864", duration: "4–6 phút" },
@@ -417,8 +417,15 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
                 aria-pressed={isActive}
               >
                 {isActive && <span className="challenge-type-check">✓</span>}
-                <div className="challenge-type-icon-wrap" style={{ background: t.iconBg, color: t.iconColor }}>
-                  <span>{t.icon}</span>
+                <div
+                  className="challenge-type-icon-wrap"
+                  style={t.iconImg
+                    ? { background: "transparent" }
+                    : { background: t.iconBg, color: t.iconColor }}
+                >
+                  {t.iconImg
+                    ? <img src={t.iconImg} alt="" width={50} height={50} style={{ display: "block", objectFit: "contain" }} />
+                    : <span>{t.icon}</span>}
                 </div>
                 <div className="challenge-type-label">{t.label}</div>
                 {t.desc && <div className="challenge-type-desc">{t.desc}</div>}
@@ -427,11 +434,11 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
                   <div className="challenge-example-label">Ví dụ</div>
                   {t.examplePreview === "icons" ? (
                     <div className="challenge-example-icons">
-                      <span style={{ background: "#fff0e8", color: "#f26419" }}>🪜</span>
+                      <img src="/challenge/dang1.png" alt="" />
                       <span className="challenge-example-plus">+</span>
-                      <span style={{ background: "#e3f2fd", color: "#4a90d9" }}>📖</span>
+                      <img src="/challenge/dang2.png" alt="" />
                       <span className="challenge-example-plus">+</span>
-                      <span style={{ background: "#e8f5e9", color: "#16a34a" }}>💬</span>
+                      <img src="/challenge/dang3.png" alt="" />
                     </div>
                   ) : (
                     <div className="challenge-example-row">
