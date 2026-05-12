@@ -756,8 +756,11 @@ const PassageBlock = memo(function PassageBlock({
       )}
       {showVi && hasTranslation ? (
         <div className="passage-card-body">
-          <div style={{ fontSize: 16, lineHeight: 1.9, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif" }}>
-            {viTranslation}
+          {/* VI rendered through the same VocabSegments + rich-renderer
+              pipeline as JP, so admin's B/I/U/size/【từ】 toolbar output
+              shows up the same way here. */}
+          <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif" }}>
+            <VocabSegments text={viTranslation!} renderText={sanitizedRenderRichInline} />
           </div>
         </div>
       ) : (
