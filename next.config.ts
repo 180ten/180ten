@@ -17,11 +17,28 @@ const isDev = process.env.NODE_ENV === "development";
 //   • frame-src has only Cloudflare Turnstile (captcha widget).
 //
 // X-XSS-Protection deliberately omitted — deprecated per MDN/OWASP.
+//
+// Cross-origin / isolation headers (HSTS, COOP, COEP, CORP, X-PCDP):
+//   • Strict-Transport-Security: 1y + includeSubDomains + preload. Once
+//     this is live, downgrading is hard — only set when production has
+//     fully migrated to HTTPS (true on Vercel).
+//   • COOP "same-origin" can break window.open OAuth popups (Google
+//     Sign-In etc). If we wire a popup-based OAuth later, switch to
+//     "same-origin-allow-popups".
+//   • COEP "require-corp" requires every cross-origin sub-resource to
+//     send a Cross-Origin-Resource-Policy header allowing it. R2 audio
+//     URLs may need their own CORP header — if the listening-section
+//     audio fails to load after deploy, downgrade to "unsafe-none".
 const securityHeaders = [
-  { key: "X-Frame-Options",        value: "DENY" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy",        value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy",     value: "camera=(), microphone=(), geolocation=()" },
+  { key: "X-Frame-Options",                  value: "DENY" },
+  { key: "X-Content-Type-Options",           value: "nosniff" },
+  { key: "Referrer-Policy",                  value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy",               value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Strict-Transport-Security",        value: "max-age=31536000; includeSubDomains; preload" },
+  { key: "Cross-Origin-Opener-Policy",       value: "same-origin" },
+  { key: "Cross-Origin-Embedder-Policy",     value: "require-corp" },
+  { key: "Cross-Origin-Resource-Policy",     value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
   {
     key: "Content-Security-Policy",
     value: [
