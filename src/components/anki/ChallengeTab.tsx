@@ -471,10 +471,6 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
                   )}
                 </div>
 
-                <div className="challenge-type-footer">
-                  <span className="challenge-type-stat" style={{ color: t.statColor }}>📊 {t.stat}</span>
-                  <span className="challenge-type-duration">⏱ {t.duration}</span>
-                </div>
               </button>
             );
           })}
