@@ -145,7 +145,6 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
   const [mode, setMode]               = useState<ChallengeMode>("select-deck");
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [selectedType, setSelectedType]     = useState<ChallengeType>(1);
-  const [maxAttempts, setMaxAttempts]       = useState<number>(3);
   const [sessionCards, setSessionCards]     = useState<SessionCard[]>([]);
   const [currentIndex, setCurrentIndex]     = useState(0);
   const [userInput, setUserInput]           = useState("");
@@ -216,17 +215,8 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     const cur = sessionCards[currentIndex];
     const { answer } = getQuestion(cur.card, cur.type);
     const ok = checkAnswer(userInput, answer);
-    const nextAttempts = attempts + 1;
-    if (ok) {
-      setLastResult("correct");
-      setAttempts(nextAttempts);
-    } else {
-      setLastResult("wrong");
-      setAttempts(nextAttempts);
-      if (nextAttempts >= maxAttempts) {
-        // Out of attempts — record as wrong; user can still tap "Xem đáp án".
-      }
-    }
+    setAttempts(attempts + 1);
+    setLastResult(ok ? "correct" : "wrong");
   }
 
   function handleNext() {
@@ -399,21 +389,9 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
           })}
         </div>
 
-        {/* Attempts bar with start button */}
-        <div className="challenge-bottom-bar">
-          <div className="challenge-attempts-section">
-            <div className="challenge-attempts-label">Số lần thử mỗi câu</div>
-            <div className="challenge-attempts-sub">Chọn số lần bạn muốn luyện tập</div>
-          </div>
-          <div className="attempts-options">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n} type="button"
-                className={`attempts-btn ${maxAttempts === n ? "active" : ""}`}
-                onClick={() => setMaxAttempts(n)}
-              >{n}</button>
-            ))}
-          </div>
+        {/* Centered start button (no attempts limit — user can keep
+            trying until they tap "Xem đáp án"). */}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
           <button
             type="button"
             className="challenge-start-btn"
@@ -436,7 +414,6 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     const cur = sessionCards[currentIndex];
     if (!cur) return null;
     const { question, answer, placeholder, lang } = getQuestion(cur.card, cur.type);
-    const exhausted = attempts >= maxAttempts && lastResult !== "correct";
     return (
       <div style={{ padding: "8px 4px 32px" }}>
         <button type="button" className="btn-ghost" onClick={backToSelect} style={{ marginBottom: 16 }}>← Thoát</button>
@@ -448,32 +425,19 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !showAnswer && lastResult !== "correct" && !exhausted) {
+              if (e.key === "Enter" && !showAnswer && lastResult !== "correct") {
                 handleSubmit();
               }
             }}
             placeholder={placeholder}
             lang={lang}
             autoFocus
-            disabled={showAnswer || lastResult === "correct" || exhausted}
+            disabled={showAnswer || lastResult === "correct"}
           />
-          <div className="challenge-attempts-indicator">
-            {Array.from({ length: maxAttempts }).map((_, i) => {
-              const isLastAttempt = i === attempts - 1;
-              const used = i < attempts;
-              const cls = used
-                ? (lastResult === "correct" && isLastAttempt ? "correct" : "used")
-                : "";
-              return <span key={i} className={`attempt-dot ${cls}`} />;
-            })}
-          </div>
 
           {lastResult === "correct" && <div className="challenge-feedback correct">✅ Đúng rồi!</div>}
-          {lastResult === "wrong" && attempts < maxAttempts && (
+          {lastResult === "wrong" && (
             <div className="challenge-feedback wrong">❌ Sai, thử lại!</div>
-          )}
-          {exhausted && (
-            <div className="challenge-feedback wrong">❌ Hết lượt thử</div>
           )}
 
           {showAnswer && (
@@ -481,13 +445,13 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
           )}
 
           <div className="challenge-actions">
-            {!showAnswer && lastResult !== "correct" && !exhausted && (
+            {!showAnswer && lastResult !== "correct" && (
               <button type="button" className="btn-accent" onClick={handleSubmit}>Kiểm tra</button>
             )}
             {!showAnswer && lastResult !== "correct" && attempts > 0 && (
               <button type="button" className="btn-ghost" onClick={() => setShowAnswer(true)}>👁 Xem đáp án</button>
             )}
-            {(showAnswer || lastResult === "correct" || exhausted) && (
+            {(showAnswer || lastResult === "correct") && (
               <button type="button" className="btn-accent" onClick={handleNext}>
                 {currentIndex + 1 >= sessionCards.length ? "Xem kết quả →" : "Tiếp tục →"}
               </button>
