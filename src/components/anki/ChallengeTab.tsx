@@ -331,19 +331,20 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     ];
 
     return (
-      <div style={{ padding: "0 4px 32px" }}>
-        <button
-          type="button" className="btn-ghost"
-          onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
-          style={{ marginTop: 12, marginBottom: 16 }}
-        >← Đổi bộ thẻ</button>
-
-        {/* Deck header — bullseye icon + name + subtitle */}
-        <div className="challenge-deck-header">
-          <div className="challenge-deck-icon">🎯</div>
-          <div>
-            <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
-            <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
+      <div style={{ padding: "0 4px 12px" }}>
+        {/* Back button + deck header on one row to save vertical space */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <button
+            type="button" className="btn-ghost"
+            onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
+            style={{ padding: "4px 10px", fontSize: 13 }}
+          >← Đổi bộ thẻ</button>
+          <div className="challenge-deck-header" style={{ marginBottom: 0, flex: 1, minWidth: 0 }}>
+            <div className="challenge-deck-icon">🎯</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
+              <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
+            </div>
           </div>
         </div>
 
@@ -418,42 +419,10 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
         </div>
 
         {emptyMsg && (
-          <div style={{ marginTop: 12, padding: "10px 14px", border: "1px solid #fde047", background: "#fef9c3", borderRadius: 8, color: "#854d0e", fontSize: 13 }}>
+          <div style={{ marginTop: 10, padding: "10px 14px", border: "1px solid #fde047", background: "#fef9c3", borderRadius: 8, color: "#854d0e", fontSize: 13 }}>
             {emptyMsg}
           </div>
         )}
-
-        {/* Feature strip */}
-        <div className="challenge-features-strip">
-          <div className="challenge-feature">
-            <div className="challenge-feature-icon" style={{ background: "#fff0e8", color: "#f26419" }}>🎯</div>
-            <div>
-              <div className="challenge-feature-title">Ghi nhớ chủ động</div>
-              <div className="challenge-feature-desc">Tăng khả năng nhớ lâu dài</div>
-            </div>
-          </div>
-          <div className="challenge-feature">
-            <div className="challenge-feature-icon" style={{ background: "#e3f2fd", color: "#4a90d9" }}>📅</div>
-            <div>
-              <div className="challenge-feature-title">Lặp lại thông minh</div>
-              <div className="challenge-feature-desc">Ôn đúng thời điểm sắp quên</div>
-            </div>
-          </div>
-          <div className="challenge-feature">
-            <div className="challenge-feature-icon" style={{ background: "#e8f5e9", color: "#16a34a" }}>📊</div>
-            <div>
-              <div className="challenge-feature-title">Theo dõi tiến độ</div>
-              <div className="challenge-feature-desc">Xem thống kê chi tiết</div>
-            </div>
-          </div>
-          <div className="challenge-feature">
-            <div className="challenge-feature-icon" style={{ background: "#fff7e0", color: "#d4890a" }}>🥇</div>
-            <div>
-              <div className="challenge-feature-title">Nâng cao mỗi ngày</div>
-              <div className="challenge-feature-desc">Tiến bộ qua từng thử thách</div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
