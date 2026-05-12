@@ -296,19 +296,31 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
   // After "✅ Đúng rồi!" appears the input is disabled, so a second Enter
   // would do nothing. Listen at the window level and advance to the next
   // card. The listener is only attached while in the "ready to advance"
-  // state — handleNext closes over fresh state because the effect re-runs
-  // on every relevant change.
+  // state.
+  //
+  // Important: the same keydown that submitted the correct answer can
+  // bubble to window AND auto-repeat if the user holds Enter even briefly.
+  // We require a keyup before the next keydown counts so a single
+  // sustained press never advances by itself.
   useEffect(() => {
     if (mode !== "playing") return;
     if (lastResult !== "correct") return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Enter") {
+    let armed = false;
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Enter") armed = true;
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Enter" && armed && !e.repeat) {
         e.preventDefault();
         handleNext();
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", onKeyDown);
+    };
     // handleNext is stable enough — re-binding on every relevant state
     // change is cheap and avoids the stale-closure trap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
