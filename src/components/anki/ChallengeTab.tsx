@@ -419,12 +419,10 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
                 {isActive && <span className="challenge-type-check">✓</span>}
                 <div
                   className="challenge-type-icon-wrap"
-                  style={t.iconImg
-                    ? { background: "transparent" }
-                    : { background: t.iconBg, color: t.iconColor }}
+                  style={{ background: t.iconBg, color: t.iconColor }}
                 >
                   {t.iconImg
-                    ? <img src={t.iconImg} alt="" width={50} height={50} style={{ display: "block", objectFit: "contain" }} />
+                    ? <img src={t.iconImg} alt="" width={42} height={42} style={{ display: "block", objectFit: "contain" }} />
                     : <span>{t.icon}</span>}
                 </div>
                 <div className="challenge-type-label">{t.label}</div>
