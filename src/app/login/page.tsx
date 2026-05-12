@@ -358,7 +358,7 @@ export default function LoginPage() {
                   <Turnstile
                     ref={loginTurnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
-                    options={{ theme: "light", size: "flexible" }}
+                    options={{ size: "invisible" }}
                     onSuccess={(token) => setLoginCaptchaToken(token)}
                     onError={() => setLoginCaptchaToken("")}
                     onExpire={() => setLoginCaptchaToken("")}
@@ -483,7 +483,7 @@ export default function LoginPage() {
                   <Turnstile
                     ref={turnstileRef}
                     siteKey={TURNSTILE_SITE_KEY}
-                    options={{ theme: "light", size: "flexible" }}
+                    options={{ size: "invisible" }}
                     onSuccess={(token) => { setCaptchaToken(token); setCapErr(""); }}
                     onError={() => { setCaptchaToken(""); setCapErr("Lỗi tải Turnstile, vui lòng thử lại."); }}
                     onExpire={() => { setCaptchaToken(""); }}

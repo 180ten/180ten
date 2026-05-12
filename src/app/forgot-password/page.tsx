@@ -101,7 +101,7 @@ export default function ForgotPasswordPage() {
               <Turnstile
                 ref={turnstileRef}
                 siteKey={TURNSTILE_SITE_KEY}
-                options={{ theme: "light", size: "flexible" }}
+                options={{ size: "invisible" }}
                 onSuccess={(token) => setCaptchaToken(token)}
                 onError={() => setCaptchaToken("")}
                 onExpire={() => setCaptchaToken("")}
