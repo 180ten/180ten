@@ -36,7 +36,11 @@ const securityHeaders = [
   { key: "Permissions-Policy",               value: "camera=(), microphone=(), geolocation=()" },
   { key: "Strict-Transport-Security",        value: "max-age=31536000; includeSubDomains; preload" },
   { key: "Cross-Origin-Opener-Policy",       value: "same-origin" },
-  { key: "Cross-Origin-Embedder-Policy",     value: "require-corp" },
+  // require-corp blocked R2 listening-section audio (no CORP header on
+  // those URLs). Falling back to unsafe-none keeps the site usable;
+  // Nuclei will still flag this header but the value is a deliberate
+  // trade-off, not a missing config.
+  { key: "Cross-Origin-Embedder-Policy",     value: "unsafe-none" },
   { key: "Cross-Origin-Resource-Policy",     value: "same-origin" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
   {
