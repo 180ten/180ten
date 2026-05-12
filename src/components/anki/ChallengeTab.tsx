@@ -118,11 +118,19 @@ function buildMixedSession(cards: ChallengeCard[]): SessionCard[] {
   return shuffle(out);
 }
 
+/** Type-1 only shows the short meaning — text before the first
+ *  " - " / " – " / " — " separator. Falls back to the full string
+ *  when there's no separator. */
+function shortMeaning(meaning: string): string {
+  const m = meaning.match(/^(.*?)\s+[-–—]\s+/);
+  return m ? m[1].trim() : meaning;
+}
+
 function getQuestion(card: ChallengeCard, type: FixedType): { question: string; answer: string; placeholder: string; lang?: string } {
   switch (type) {
-    case 1: return { question: `「${card.meaning}」tiếng Nhật là gì?`,           answer: card.word,    placeholder: "Gõ chữ Nhật...",   lang: "ja" };
-    case 2: return { question: `「${card.word}」đọc như thế nào? (furigana)`,    answer: card.reading, placeholder: "Gõ furigana...",   lang: "ja" };
-    case 3: return { question: `「${card.word}」âm Hán Việt là gì?`,             answer: card.han_viet, placeholder: "Gõ Hán Việt..." };
+    case 1: return { question: `「${shortMeaning(card.meaning)}」tiếng Nhật là gì?`, answer: card.word,    placeholder: "Gõ chữ Nhật...", lang: "ja" };
+    case 2: return { question: `「${card.word}」đọc như thế nào?`,                   answer: card.reading, placeholder: "Gõ furigana...", lang: "ja" };
+    case 3: return { question: `「${card.word}」có âm Hán Việt là gì?`,              answer: card.han_viet, placeholder: "Gõ Hán Việt..." };
   }
 }
 
