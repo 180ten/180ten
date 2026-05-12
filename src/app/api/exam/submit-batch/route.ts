@@ -11,7 +11,7 @@
 //
 // On dev mode this turns 100 × 2-4s into 1 × ~500ms.
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { buildBalancedPositionMapForQuestions, expectedPosForSlot, type AnswerPositionMap, type RawQuestion } from "@/lib/examShuffle";
@@ -55,7 +55,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     return jsonError(500, "Server is missing Supabase env vars");
   }
 
-  // ── 1) Auth (single check for entire batch) ─────────────────────────
+  // ── 1+2) Auth check + body parse in parallel ─────────────────────────
+  // getUser hits Supabase GoTrue (network) and req.json() reads the
+  // request stream (CPU). Neither depends on the other, so race them.
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7).trim()
@@ -65,21 +67,20 @@ export async function POST(req: Request): Promise<NextResponse> {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const [userResult, parsedBody] = await Promise.all([
+    token ? sb.auth.getUser(token) : Promise.resolve(null),
+    (req.json() as Promise<BatchBody>).catch(() => null),
+  ]);
+
   let authUserId: string | null = null;
   let tokenInvalid = false;
-  if (token) {
-    const { data: userRes, error: userErr } = await sb.auth.getUser(token);
-    if (userRes?.user) authUserId = userRes.user.id;
-    else tokenInvalid = !!userErr || !userRes?.user;
+  if (token && userResult) {
+    if (userResult.data?.user) authUserId = userResult.data.user.id;
+    else tokenInvalid = !!userResult.error || !userResult.data?.user;
   }
 
-  // ── 2) Parse body ────────────────────────────────────────────────────
-  let body: BatchBody;
-  try {
-    body = (await req.json()) as BatchBody;
-  } catch {
-    return jsonError(400, "Body must be JSON");
-  }
+  if (!parsedBody) return jsonError(400, "Body must be JSON");
+  const body: BatchBody = parsedBody;
 
   const inputs = Array.isArray(body.inputs) ? body.inputs : [];
   if (inputs.length === 0) return jsonError(400, "inputs array required");
@@ -123,14 +124,26 @@ export async function POST(req: Request): Promise<NextResponse> {
   const keyToExam = new Map<string, string>();
   examIds.forEach((id, i) => keyToExam.set(sessionKeys[i], id));
 
-  const { data: sessions, error: sessionsErr } = await sb
-    .from("exam_sessions")
-    .select("session_key, seed")
-    .in("session_key", sessionKeys)
-    .gt("expires_at", new Date().toISOString());
-  if (sessionsErr) {
-    return jsonError(500, `exam_sessions lookup failed: ${sessionsErr.message}`);
+  // Fire the seed lookup and the questions scope query concurrently —
+  // they have no data dependency on each other.
+  type DbRow = RawQuestion & { exam_id: string };
+  const [sessRes, scopeRes] = await Promise.all([
+    sb.from("exam_sessions")
+      .select("session_key, seed")
+      .in("session_key", sessionKeys)
+      .gt("expires_at", new Date().toISOString()),
+    sb.from("questions")
+      .select("id,exam_id,type,level,order_index,data")
+      .in("exam_id", examIds),
+  ]);
+
+  if (sessRes.error) {
+    return jsonError(500, `exam_sessions lookup failed: ${sessRes.error.message}`);
   }
+  if (scopeRes.error) return jsonError(500, scopeRes.error.message);
+
+  const sessions = sessRes.data;
+  const scopeRows = scopeRes.data;
 
   const seedByExam = new Map<string, string>();
   for (const s of (sessions ?? []) as { session_key: string; seed: string }[]) {
@@ -146,30 +159,15 @@ export async function POST(req: Request): Promise<NextResponse> {
   // Deliberately do NOT delete sessions here — expires_at handles cleanup,
   // and keeping them lets retries / re-submits stay consistent.
 
-  // ── 4) Fetch all unique questions in ONE DB query ────────────────────
-  const uniqueIds = Array.from(new Set(inputs.map((i) => i.question_id)));
-  const { data: rows, error: qErr } = await sb
-    .from("questions")
-    .select("id,exam_id,type,level,order_index,data")
-    .in("id", uniqueIds);
+  // ── 4) Build byId map + per-exam shuffle position maps ───────────────
+  if (!scopeRows || scopeRows.length === 0) return jsonError(404, "No questions found");
 
-  if (qErr) return jsonError(500, qErr.message);
-  if (!rows || rows.length === 0) return jsonError(404, "No questions found");
-
-  // Each row also carries its own exam_id (used to verify cross-exam attacks).
-  type DbRow = RawQuestion & { exam_id: string };
   const byId = new Map<string, DbRow>();
-  for (const r of rows) byId.set(String(r.id), r as unknown as DbRow);
-
-  const { data: scopeRows, error: scopeErr } = await sb
-    .from("questions")
-    .select("id,exam_id,type,level,order_index,data")
-    .in("exam_id", examIds);
-  if (scopeErr) return jsonError(500, scopeErr.message);
+  for (const r of scopeRows as unknown as DbRow[]) byId.set(String(r.id), r);
 
   const posMaps: Record<string, AnswerPositionMap> = {};
   for (const examId of examIds) {
-    const rawRows = ((scopeRows ?? []) as unknown as DbRow[]).filter((r) => String(r.exam_id) === examId);
+    const rawRows = (scopeRows as unknown as DbRow[]).filter((r) => String(r.exam_id) === examId);
     posMaps[examId] = buildBalancedPositionMapForQuestions(rawRows, seedByExam.get(examId)!, examId);
   }
 
@@ -227,29 +225,36 @@ export async function POST(req: Request): Promise<NextResponse> {
   const level     = typeof body.level === "string" ? body.level : "";
   const report    = buildReportData(answerKey, allAnswers, level, slotTypeMap);
 
-  // ── 7) Persist exam_results — only for single-exam + logged-in submits.
-  // Target practice (multiple parent exam_ids) and guest sessions skip the
-  // insert; client still gets the report back for local-only history.
+  // ── 7) Persist exam_results AFTER the response — only for single-exam
+  // + logged-in submits. Target practice (multiple parent exam_ids) and
+  // guest sessions skip the insert; client still gets the report back
+  // for local-only history.
+  //
+  // after() runs the callback once the response has been sent, so the
+  // user no longer waits on the round-trip. The session_key was already
+  // hashed for the seed lookup — reuse it instead of re-hashing.
   if (authUserId && examIds.length === 1) {
     const examIdSingle = examIds[0];
-    const sessionKey   = await hashSHA256(`${authUserId}:${examIdSingle}:${SERVER_SEED_SECRET}`);
-    const { error: insertErr } = await sb.from("exam_results").insert({
-      user_id:     authUserId,
-      exam_id:     examIdSingle,
-      session_key: sessionKey,
-      score_pct,
-      correct,
-      wrong,
-      skip,
-      total,
-      time_spent:  typeof body.time_spent === "number" ? body.time_spent : 0,
-      report_data: report,
+    const sessionKey   = sessionKeys[examIds.indexOf(examIdSingle)];
+    after(async () => {
+      const { error: insertErr } = await sb.from("exam_results").insert({
+        user_id:     authUserId,
+        exam_id:     examIdSingle,
+        session_key: sessionKey,
+        score_pct,
+        correct,
+        wrong,
+        skip,
+        total,
+        time_spent:  typeof body.time_spent === "number" ? body.time_spent : 0,
+        report_data: report,
+      });
+      // 23505 = duplicate key on session_key — same submission retried,
+      // not an error. Any OTHER error gets logged.
+      if (insertErr && (insertErr as { code?: string }).code !== "23505") {
+        console.error("[submit-batch] exam_results insert failed:", insertErr.message);
+      }
     });
-    // 23505 = duplicate key on session_key — same submission retried, not
-    // an error. Any OTHER error gets logged but doesn't block the response.
-    if (insertErr && (insertErr as { code?: string }).code !== "23505") {
-      console.error("[submit-batch] exam_results insert failed:", insertErr.message);
-    }
   }
 
   return NextResponse.json({
