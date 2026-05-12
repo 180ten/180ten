@@ -113,10 +113,10 @@ export default function ForgotPasswordPage() {
 
             <button
               onClick={() => void submit()}
-              disabled={busy}
-              style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", opacity: busy ? 0.6 : 1 }}
+              disabled={busy || !captchaToken}
+              style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: (busy || !captchaToken) ? "not-allowed" : "pointer", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", opacity: (busy || !captchaToken) ? 0.6 : 1 }}
             >
-              {busy ? "Đang gửi..." : "Gửi email đặt lại mật khẩu"}
+              {!captchaToken ? "⏳ Đang xác minh..." : busy ? "Đang gửi..." : "Gửi email đặt lại mật khẩu"}
             </button>
 
             <div style={{ textAlign: "center", marginTop: 18, fontSize: 13 }}>

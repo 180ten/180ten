@@ -369,8 +369,13 @@ export default function LoginPage() {
               <div className={`form-error ${loginErr ? "show" : ""}`} id="li-err">
                 {loginErr}
               </div>
-              <button className="btn-submit" id="li-btn" onClick={() => void doLogin()} disabled={loginBusy}>
-                {loginBusy ? (
+              <button className="btn-submit" id="li-btn" onClick={() => void doLogin()} disabled={loginBusy || !loginCaptchaToken}>
+                {!loginCaptchaToken ? (
+                  <>
+                    <span className="spinner" />
+                    Đang xác minh...
+                  </>
+                ) : loginBusy ? (
                   <>
                     <span className="spinner" />
                     Đang xử lý...
@@ -497,8 +502,13 @@ export default function LoginPage() {
               <div className={`form-error ${regErr ? "show" : ""}`} id="rg-err">
                 {regErr}
               </div>
-              <button className="btn-submit" id="rg-btn" onClick={() => void doRegister()} disabled={regBusy}>
-                {regBusy ? (
+              <button className="btn-submit" id="rg-btn" onClick={() => void doRegister()} disabled={regBusy || !captchaToken}>
+                {!captchaToken ? (
+                  <>
+                    <span className="spinner" />
+                    Đang xác minh...
+                  </>
+                ) : regBusy ? (
                   <>
                     <span className="spinner" />
                     Đang xử lý...

@@ -94,9 +94,13 @@ export default function AdminGate({ onSuccess }: AdminGateProps) {
           className="gate-btn"
           id="g-btn"
           onClick={doLogin}
-          disabled={busy}
+          disabled={busy || !captchaToken}
         >
-          {busy ? <><span className="spinner"></span>Đang đăng nhập...</> : "Đăng nhập →"}
+          {!captchaToken
+            ? <><span className="spinner"></span>Đang xác minh...</>
+            : busy
+              ? <><span className="spinner"></span>Đang đăng nhập...</>
+              : "Đăng nhập →"}
         </button>
         {error && <div className="gate-err show" id="g-err">{error}</div>}
         <div className="gate-hint">Chỉ tài khoản admin mới vào được.</div>
