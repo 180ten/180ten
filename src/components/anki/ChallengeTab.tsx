@@ -12,7 +12,7 @@
 //
 // State is component-local — nothing persisted (a session is a session).
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AnkiDeck } from "@/hooks/useAnki";
 
 type ChallengeMode = "select-deck" | "select-type" | "playing" | "result";
@@ -251,6 +251,27 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     setResults([]);
     setEmptyMsg(null);
   }
+
+  // After "✅ Đúng rồi!" appears the input is disabled, so a second Enter
+  // would do nothing. Listen at the window level and advance to the next
+  // card. The listener is only attached while in the "ready to advance"
+  // state — handleNext closes over fresh state because the effect re-runs
+  // on every relevant change.
+  useEffect(() => {
+    if (mode !== "playing") return;
+    if (lastResult !== "correct") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleNext();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // handleNext is stable enough — re-binding on every relevant state
+    // change is cheap and avoids the stale-closure trap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, lastResult, currentIndex, sessionCards.length]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
