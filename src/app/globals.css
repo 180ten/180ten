@@ -1744,107 +1744,108 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 /* ── Challenge result screen (re-designed) ─────────────────────────── */
 .challenge-result{
   text-align:center;
-  padding:36px 16px 48px;
+  padding:20px 16px 28px;
   display:flex;flex-direction:column;align-items:center;
 }
 
 /* Score circle ------------------------------------------------------- */
 .chresult-score-wrap{
   position:relative;
-  margin-bottom:34px;
+  margin-bottom:24px;
   animation:chresult-pop .55s cubic-bezier(.34,1.56,.64,1) both;
 }
 .chresult-circle{
   position:relative;
-  width:184px;height:184px;
+  width:148px;height:148px;
   border-radius:50%;
   background:#fff;
   border:4px solid #fff;
-  box-shadow:0 18px 36px -8px rgba(232,80,42,.22),0 4px 12px rgba(0,0,0,.04);
+  box-shadow:0 14px 28px -8px rgba(232,80,42,.22),0 3px 10px rgba(0,0,0,.04);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
 .chresult-score{
-  font-size:56px;line-height:1;font-weight:900;
+  font-size:46px;line-height:1;font-weight:900;
   color:var(--accent);
-  display:flex;align-items:baseline;gap:6px;
+  display:flex;align-items:baseline;gap:5px;
   font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;
 }
-.chresult-slash{color:#d6d3cf;font-weight:300;font-size:32px;}
+.chresult-slash{color:#d6d3cf;font-weight:300;font-size:26px;}
 .chresult-ribbon{
-  position:absolute;left:50%;bottom:-14px;
+  position:absolute;left:50%;bottom:-12px;
   transform:translateX(-50%);
   background:var(--accent);color:#fff;
-  padding:5px 22px;
+  padding:4px 18px;
   border-radius:3px;
-  font-size:12px;font-weight:800;letter-spacing:1.2px;
-  box-shadow:0 6px 14px rgba(232,80,42,.32);
+  font-size:11px;font-weight:800;letter-spacing:1.1px;
+  box-shadow:0 5px 12px rgba(232,80,42,.32);
   white-space:nowrap;
 }
 .chresult-ribbon-flap{
-  position:absolute;top:6px;width:0;height:0;
+  position:absolute;top:5px;width:0;height:0;
 }
 .chresult-ribbon-flap.left{
-  left:-9px;
-  border-top:9px solid transparent;
-  border-bottom:9px solid transparent;
-  border-right:9px solid #b03c1d;
+  left:-8px;
+  border-top:8px solid transparent;
+  border-bottom:8px solid transparent;
+  border-right:8px solid #b03c1d;
 }
 .chresult-ribbon-flap.right{
-  right:-9px;
-  border-top:9px solid transparent;
-  border-bottom:9px solid transparent;
-  border-left:9px solid #b03c1d;
+  right:-8px;
+  border-top:8px solid transparent;
+  border-bottom:8px solid transparent;
+  border-left:8px solid #b03c1d;
 }
 .chresult-sparkle{
   position:absolute;display:block;pointer-events:none;
   animation:chresult-twinkle 1.8s ease-in-out infinite;
 }
-.chresult-sparkle.s1{top:-14px;left:-32px;color:#34d399;width:24px;height:24px;transform:rotate(12deg);}
-.chresult-sparkle.s2{top:-2px;right:-36px;color:#fbbf24;width:18px;height:18px;transform:rotate(-8deg);animation-delay:.45s;}
-.chresult-sparkle.s3{bottom:30px;right:-30px;color:var(--accent);width:20px;height:20px;transform:rotate(-12deg);animation-delay:.9s;}
-.chresult-sparkle.s4{bottom:10px;left:-22px;color:#fbbf24;width:16px;height:16px;transform:rotate(8deg);animation-delay:1.35s;}
+.chresult-sparkle.s1{top:-12px;left:-26px;color:#34d399;width:20px;height:20px;transform:rotate(12deg);}
+.chresult-sparkle.s2{top:-2px;right:-30px;color:#fbbf24;width:15px;height:15px;transform:rotate(-8deg);animation-delay:.45s;}
+.chresult-sparkle.s3{bottom:24px;right:-24px;color:var(--accent);width:17px;height:17px;transform:rotate(-12deg);animation-delay:.9s;}
+.chresult-sparkle.s4{bottom:8px;left:-18px;color:#fbbf24;width:13px;height:13px;transform:rotate(8deg);animation-delay:1.35s;}
 
 /* Đúng / Sai summary card ------------------------------------------- */
 .chresult-summary{
-  width:100%;max-width:540px;
+  width:100%;max-width:480px;
   background:var(--white);
   border:1px solid #f3f0ec;
-  border-radius:18px;
-  box-shadow:0 2px 12px rgba(0,0,0,.03);
-  padding:14px 8px;
+  border-radius:14px;
+  box-shadow:0 2px 10px rgba(0,0,0,.03);
+  padding:10px 8px;
   display:flex;align-items:center;
-  margin-bottom:12px;
+  margin-bottom:10px;
   animation:chresult-fade-up .5s ease-out .15s both;
 }
 .chresult-summary-col{
-  flex:1;display:flex;align-items:center;justify-content:center;gap:12px;
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
 }
 .chresult-summary-icon{
-  width:38px;height:38px;border-radius:50%;
+  width:32px;height:32px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
 .chresult-summary-icon.ok{background:#d1fae5;color:#059669;}
 .chresult-summary-icon.bad{background:#ffe4e6;color:#fb7185;}
-.chresult-summary-text{font-size:16px;font-weight:600;color:#374151;}
+.chresult-summary-icon svg{width:16px;height:16px;}
+.chresult-summary-text{font-size:14px;font-weight:600;color:#374151;}
 .chresult-summary-text .ok{color:#059669;font-weight:700;}
 .chresult-summary-text .bad{color:#e11d48;font-weight:700;}
 .chresult-summary-divider{width:1px;align-self:stretch;background:#eef0f2;}
 
 /* Word pills card --------------------------------------------------- */
 .chresult-tags{
-  width:100%;max-width:540px;
+  width:100%;max-width:480px;
   background:var(--white);
   border:1px solid #f3f0ec;
-  border-radius:18px;
-  box-shadow:0 2px 12px rgba(0,0,0,.03);
-  padding:18px;
-  display:flex;flex-wrap:wrap;justify-content:center;gap:10px;
-  margin-bottom:28px;
+  border-radius:14px;
+  box-shadow:0 2px 10px rgba(0,0,0,.03);
+  padding:14px;
+  display:flex;flex-wrap:wrap;justify-content:center;gap:8px;
+  margin-bottom:20px;
   animation:chresult-fade-up .5s ease-out .25s both;
 }
 .chresult-tag{
-  padding:7px 18px;border-radius:14px;
-  font-size:16px;font-weight:700;letter-spacing:.5px;
+  padding:5px 14px;border-radius:12px;
+  font-size:14px;font-weight:700;letter-spacing:.4px;
   font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;
   box-shadow:0 1px 2px rgba(0,0,0,.04);
 }
@@ -1853,16 +1854,17 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 
 /* Action buttons ---------------------------------------------------- */
 .chresult-actions{
-  display:flex;gap:14px;flex-wrap:wrap;justify-content:center;
+  display:flex;gap:12px;flex-wrap:wrap;justify-content:center;
   animation:chresult-fade-up .5s ease-out .35s both;
 }
 .chresult-btn{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:11px 26px;border-radius:99px;border:none;
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 22px;border-radius:99px;border:none;
   font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;
-  font-size:14px;font-weight:700;cursor:pointer;
+  font-size:13px;font-weight:700;cursor:pointer;
   transition:transform .15s, box-shadow .15s, background .15s;
 }
+.chresult-btn svg{width:16px;height:16px;}
 .chresult-btn.primary{
   background:var(--accent);color:#fff;
   box-shadow:0 8px 18px rgba(232,80,42,.28);
