@@ -1227,7 +1227,7 @@ export default function Home() {
           )}
 
           {ankiTab === "challenge" && (
-            <div style={{ padding: "16px 22px 22px", flex: 1, overflowY: "auto" }}>
+            <div style={{ padding: "4px 22px 22px", flex: 1, overflowY: "auto" }}>
               <ChallengeTab decks={anki.decks} isLoggedIn={!!user} />
             </div>
           )}

@@ -1648,7 +1648,7 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 @keyframes kickedSlideUp{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 
 /* ── Anki Challenge tab (typed-recall quiz) ─────────────────────────── */
-.anki-tab-switcher{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;}
+.anki-tab-switcher{display:flex;gap:8px;margin-bottom:0;border-bottom:2px solid var(--border);padding-bottom:0;}
 .anki-tab-btn{padding:8px 20px;border:none;background:none;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;}
 .anki-tab-btn:hover{color:var(--text);}
 .anki-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}

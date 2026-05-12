@@ -331,11 +331,11 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     ];
 
     return (
-      <div style={{ padding: "8px 4px 32px" }}>
+      <div style={{ padding: "0 4px 32px" }}>
         <button
           type="button" className="btn-ghost"
           onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
-          style={{ marginBottom: 20 }}
+          style={{ marginTop: 12, marginBottom: 16 }}
         >← Đổi bộ thẻ</button>
 
         {/* Deck header — bullseye icon + name + subtitle */}
