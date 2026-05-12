@@ -1695,6 +1695,17 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 .challenge-start-btn{padding:9px 18px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s;}
 .challenge-start-btn:hover{background:var(--accent2);}
 
+/* ── Challenge: scope picker (Từ đã học / Tất cả / Số lượng tự chọn) ── */
+.challenge-scope-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+.challenge-scope-card{padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--white);cursor:pointer;text-align:center;transition:all .15s;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:62px;}
+.challenge-scope-card:hover:not([disabled]){border-color:#f6b89a;}
+.challenge-scope-card.active{border-color:var(--accent);background:#fff8f5;}
+.challenge-scope-card[disabled]{opacity:.45;cursor:not-allowed;}
+.challenge-scope-label{font-size:13px;font-weight:700;color:var(--text);}
+.challenge-scope-sub{font-size:11px;color:var(--muted);}
+.challenge-scope-input{width:80px;height:28px;text-align:center;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;font-size:13px;font-weight:700;color:var(--text);outline:none;background:#fff;margin-top:2px;}
+.challenge-scope-input:focus{border-color:var(--accent);}
+
 .challenge-card{max-width:600px;margin:0 auto;padding:32px;background:var(--white);border-radius:16px;border:1px solid var(--border);box-shadow:0 2px 16px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:16px;}
 .challenge-progress{font-size:13px;color:var(--muted);text-align:center;}
 .challenge-progress-bar{height:4px;background:var(--border);border-radius:99px;margin-top:6px;overflow:hidden;}

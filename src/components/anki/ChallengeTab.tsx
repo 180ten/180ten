@@ -13,11 +13,12 @@
 // State is component-local — nothing persisted (a session is a session).
 
 import { useEffect, useMemo, useState } from "react";
-import type { AnkiDeck } from "@/hooks/useAnki";
+import type { AnkiDeck, SrsEntry } from "@/hooks/useAnki";
 
 type ChallengeMode = "select-deck" | "select-type" | "playing" | "result";
 type ChallengeType = 1 | 2 | 3 | 4;
 type FixedType = 1 | 2 | 3;
+type ChallengeScope = "learned" | "all" | "custom";
 
 interface ChallengeCard {
   vocab_id: string;     // stable key — falls back to word + idx if vocab_id missing
@@ -138,13 +139,18 @@ function getQuestion(card: ChallengeCard, type: FixedType): { question: string; 
 
 interface Props {
   decks: AnkiDeck[];
+  /** SRS progress map keyed by `${deckId}_${cardIdx}` — used to filter
+   *  the "Từ đã học" scope. */
+  progress: Record<string, SrsEntry>;
   isLoggedIn: boolean;
 }
 
-export default function ChallengeTab({ decks, isLoggedIn }: Props) {
+export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
   const [mode, setMode]               = useState<ChallengeMode>("select-deck");
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [selectedType, setSelectedType]     = useState<ChallengeType>(1);
+  const [scope, setScope]                   = useState<ChallengeScope>("all");
+  const [customCount, setCustomCount]       = useState<number>(20);
   const [sessionCards, setSessionCards]     = useState<SessionCard[]>([]);
   const [currentIndex, setCurrentIndex]     = useState(0);
   const [userInput, setUserInput]           = useState("");
@@ -159,16 +165,21 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
     [decks, selectedDeckId],
   );
 
-  // Pre-compute card count + valid Type-3 count per deck for the deck list.
+  // Pre-compute card count + learned-count per deck for the deck list
+  // and the scope picker on the select-type screen.
   const deckSummaries = useMemo(() => decks.map((d) => {
     const cards = deckToChallengeCards(d);
-    return {
-      id:           d.id,
-      name:         d.name,
-      total:        cards.length,
-      type3Count:   cards.filter((c) => isKanjiWord(c.word) && c.han_viet.length > 0).length,
-    };
-  }), [decks]);
+    let learned = 0;
+    for (let i = 0; i < d.cards.length; i++) {
+      if (progress[`${d.id}_${i}`] != null) learned++;
+    }
+    return { id: d.id, name: d.name, total: cards.length, learned };
+  }), [decks, progress]);
+
+  const selectedSummary = useMemo(
+    () => deckSummaries.find((s) => s.id === selectedDeckId) ?? null,
+    [deckSummaries, selectedDeckId],
+  );
 
   function pickDeck(deckId: string) {
     setSelectedDeckId(deckId);
@@ -178,22 +189,52 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
 
   function startSession(type: ChallengeType) {
     if (!selectedDeck) return;
-    const cards = deckToChallengeCards(selectedDeck);
+
+    // Apply the scope filter at the source — keep the original index so we
+    // can look up SRS progress for "Từ đã học". deckToChallengeCards drops
+    // cards missing word/meaning, but it doesn't preserve the original
+    // index, so we inline the same logic here.
+    const allCards: { card: ChallengeCard; idx: number }[] = selectedDeck.cards
+      .map((c, idx) => ({
+        idx,
+        card: {
+          vocab_id: String(c.vocab_id ?? `${selectedDeck.id}-${idx}`),
+          word:     String(c.word ?? "").trim(),
+          reading:  String(c.reading ?? "").trim(),
+          meaning:  String(c.meaning ?? "").trim(),
+          han_viet: String(c.han_viet ?? "").trim(),
+        },
+      }))
+      .filter(({ card }) => card.word && card.meaning);
+
+    const scoped = scope === "learned"
+      ? allCards.filter(({ idx }) => progress[`${selectedDeck.id}_${idx}`] != null)
+      : allCards;
+    const cards = scoped.map((x) => x.card);
+
     if (cards.length === 0) {
-      setEmptyMsg("Bộ thẻ này không có thẻ nào hợp lệ để luyện.");
+      setEmptyMsg(
+        scope === "learned"
+          ? "Bộ thẻ này chưa có từ nào đã học."
+          : "Bộ thẻ này không có thẻ nào hợp lệ để luyện.",
+      );
       return;
     }
-    let session: SessionCard[];
-    if (type === 4) {
-      session = buildMixedSession(cards);
-    } else {
-      session = buildFixedSession(cards, type);
+
+    let session: SessionCard[] = type === 4
+      ? buildMixedSession(cards)
+      : buildFixedSession(cards, type);
+
+    if (scope === "custom") {
+      const n = Math.max(1, Math.min(customCount || 1, session.length));
+      session = session.slice(0, n);
     }
+
     if (session.length === 0) {
       setEmptyMsg(
-        type === 3 ? "Bộ thẻ này không có từ Hán Việt để luyện."
-        : type === 2 ? "Bộ thẻ này không có từ nào có cách đọc."
-        : "Bộ thẻ này không có thẻ nào hợp lệ.",
+        type === 3 ? "Không có từ Hán Việt nào trong phạm vi đã chọn."
+        : type === 2 ? "Không có từ nào có cách đọc trong phạm vi đã chọn."
+        : "Không có thẻ hợp lệ trong phạm vi đã chọn.",
       );
       return;
     }
@@ -408,6 +449,50 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
               </button>
             );
           })}
+        </div>
+
+        {/* Scope picker — Từ đã học / Tất cả / Số lượng tự chọn. */}
+        <div className="challenge-scope-grid">
+          <button
+            type="button"
+            className={`challenge-scope-card ${scope === "learned" ? "active" : ""}`}
+            onClick={() => setScope("learned")}
+            disabled={(selectedSummary?.learned ?? 0) === 0}
+            title={(selectedSummary?.learned ?? 0) === 0 ? "Chưa có từ đã học" : undefined}
+          >
+            <div className="challenge-scope-label">Từ đã học</div>
+            <div className="challenge-scope-sub">
+              {selectedSummary?.learned ?? 0} / {selectedSummary?.total ?? 0} thẻ
+            </div>
+          </button>
+          <button
+            type="button"
+            className={`challenge-scope-card ${scope === "all" ? "active" : ""}`}
+            onClick={() => setScope("all")}
+          >
+            <div className="challenge-scope-label">Tất cả</div>
+            <div className="challenge-scope-sub">{selectedSummary?.total ?? 0} thẻ</div>
+          </button>
+          <div
+            className={`challenge-scope-card ${scope === "custom" ? "active" : ""}`}
+            onClick={() => setScope("custom")}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setScope("custom"); }}
+          >
+            <div className="challenge-scope-label">Số lượng tự chọn</div>
+            <input
+              type="number" min={1} max={selectedSummary?.total ?? undefined}
+              className="challenge-scope-input"
+              value={customCount}
+              onClick={(e) => e.stopPropagation()}
+              onFocus={() => setScope("custom")}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setCustomCount(Number.isFinite(v) && v > 0 ? Math.floor(v) : 1);
+                setScope("custom");
+              }}
+            />
+          </div>
         </div>
 
         {/* Centered start button (no attempts limit — user can keep

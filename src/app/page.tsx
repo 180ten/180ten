@@ -1228,7 +1228,7 @@ export default function Home() {
 
           {ankiTab === "challenge" && (
             <div style={{ padding: "4px 22px 22px", flex: 1, overflowY: "auto" }}>
-              <ChallengeTab decks={anki.decks} isLoggedIn={!!user} />
+              <ChallengeTab decks={anki.decks} progress={anki.progress} isLoggedIn={!!user} />
             </div>
           )}
         </div>
