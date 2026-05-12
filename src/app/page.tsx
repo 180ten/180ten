@@ -11,6 +11,7 @@ import DashboardTab from "@/components/tabs/DashboardTab";
 import MockTestTab, { type ExamMeta } from "@/components/tabs/MockTestTab";
 import AnkiTab from "@/components/tabs/AnkiTab";
 import type { AnkiStudyState } from "@/components/tabs/AnkiTab";
+import ChallengeTab from "@/components/anki/ChallengeTab";
 
 import BreakOverlay from "@/components/modals/BreakOverlay";
 import ExamConfirmModal from "@/components/modals/ExamConfirmModal";
@@ -779,6 +780,7 @@ export default function Home() {
   const ankiCardRateRef = useRef<HTMLDivElement>(null);
 
   const [srsInfoOpen, setSrsInfoOpen] = useState(false);
+  const [ankiTab, setAnkiTab] = useState<"srs" | "challenge">("srs");
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [folderNameInput, setFolderNameInput] = useState("");
   const [folderError, setFolderError] = useState("");
@@ -1177,36 +1179,58 @@ export default function Home() {
 
         {/* ANKI TAB */}
         <div style={{ display: activeTab === "anki" ? "flex" : "none", flex: 1, flexDirection: "column" }}>
-          <AnkiTab
-            isLoggedIn={!!user}
-            isPremium={isPremiumForAnki(profile)}
-            folders={compFolders}
-            decks={compDecks}
-            batchSize={anki.settings.batchSize}
-            studyState={ankiStudyState}
-            cardRef={ankiCardRef}
-            cardRateRef={ankiCardRateRef}
-            onStartStudy={(d) => anki.startStudy(anki.decks.find((dk) => dk.id === d.id)!)}
-            onCloseStudy={anki.closeStudy}
-            onFlipCard={anki.flipCard}
-            onRateCard={(r) => anki.rateCard(r === "yes")}
-            onResetDeck={() => {
-              if (anki.studyDeck) anki.startStudy(anki.studyDeck);
-            }}
-            onSetBatchSize={(n) => anki.updateSettings({ batchSize: n })}
-            onOpenCreateFolder={() => setCreateFolderOpen(true)}
-            onOpenCreateDeck={() => setCreateDeckOpen(true)}
-            onOpenDeckPreview={(d) => {
-              const full = anki.decks.find((dk) => dk.id === d.id);
-              if (full) setPreviewDeck(toCompDeck(full));
-            }}
-            onDeleteDeck={handleDeleteDeck}
-            onDeleteFolder={handleDeleteFolder}
-            onToggleSrsInfo={(e) => { e.stopPropagation(); setSrsInfoOpen((o) => !o); }}
-            srsInfoOpen={srsInfoOpen}
-            totalDone={anki.totalDone}
-            onOpenPremium={() => setPremiumOpen(true)}
-          />
+          {/* Anki section sub-tabs: SRS (existing) vs Challenge (typed-recall quiz) */}
+          <div className="anki-tab-switcher" style={{ padding: "16px 22px 0" }}>
+            <button
+              type="button"
+              className={`anki-tab-btn ${ankiTab === "srs" ? "active" : ""}`}
+              onClick={() => setAnkiTab("srs")}
+            >🗂️ Flashcard SRS</button>
+            <button
+              type="button"
+              className={`anki-tab-btn ${ankiTab === "challenge" ? "active" : ""}`}
+              onClick={() => setAnkiTab("challenge")}
+            >⚔️ Challenge</button>
+          </div>
+
+          {ankiTab === "srs" && (
+            <AnkiTab
+              isLoggedIn={!!user}
+              isPremium={isPremiumForAnki(profile)}
+              folders={compFolders}
+              decks={compDecks}
+              batchSize={anki.settings.batchSize}
+              studyState={ankiStudyState}
+              cardRef={ankiCardRef}
+              cardRateRef={ankiCardRateRef}
+              onStartStudy={(d) => anki.startStudy(anki.decks.find((dk) => dk.id === d.id)!)}
+              onCloseStudy={anki.closeStudy}
+              onFlipCard={anki.flipCard}
+              onRateCard={(r) => anki.rateCard(r === "yes")}
+              onResetDeck={() => {
+                if (anki.studyDeck) anki.startStudy(anki.studyDeck);
+              }}
+              onSetBatchSize={(n) => anki.updateSettings({ batchSize: n })}
+              onOpenCreateFolder={() => setCreateFolderOpen(true)}
+              onOpenCreateDeck={() => setCreateDeckOpen(true)}
+              onOpenDeckPreview={(d) => {
+                const full = anki.decks.find((dk) => dk.id === d.id);
+                if (full) setPreviewDeck(toCompDeck(full));
+              }}
+              onDeleteDeck={handleDeleteDeck}
+              onDeleteFolder={handleDeleteFolder}
+              onToggleSrsInfo={(e) => { e.stopPropagation(); setSrsInfoOpen((o) => !o); }}
+              srsInfoOpen={srsInfoOpen}
+              totalDone={anki.totalDone}
+              onOpenPremium={() => setPremiumOpen(true)}
+            />
+          )}
+
+          {ankiTab === "challenge" && (
+            <div style={{ padding: "16px 22px 22px", flex: 1, overflowY: "auto" }}>
+              <ChallengeTab decks={anki.decks} isLoggedIn={!!user} />
+            </div>
+          )}
         </div>
 
         <div style={{ display: activeTab === "chinhta" ? "flex" : "none", flex: 1, flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 48, textAlign: "center", gap: 18 }}>

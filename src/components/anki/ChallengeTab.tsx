@@ -1,0 +1,465 @@
+"use client";
+// src/components/anki/ChallengeTab.tsx
+//
+// Anki "⚔️ Challenge" mode — typed-recall quiz over a user's deck.
+//
+// Flow: select-deck → select-type → playing → result
+//   - Type 1: meaning (vi) → type the Japanese word
+//   - Type 2: kanji → type the furigana (reading)
+//   - Type 3: kanji → type the Han-Viet (only kanji words with han_viet)
+//   - Type 4: mixed (each card randomly assigned 1/2/3, falls back to 1
+//     if a card lacks the data needed for the assigned type)
+//
+// State is component-local — nothing persisted (a session is a session).
+
+import { useMemo, useState } from "react";
+import type { AnkiDeck } from "@/hooks/useAnki";
+
+type ChallengeMode = "select-deck" | "select-type" | "playing" | "result";
+type ChallengeType = 1 | 2 | 3 | 4;
+type FixedType = 1 | 2 | 3;
+
+interface ChallengeCard {
+  vocab_id: string;     // stable key — falls back to word + idx if vocab_id missing
+  word: string;
+  reading: string;
+  meaning: string;
+  han_viet: string;
+}
+
+interface SessionCard {
+  card: ChallengeCard;
+  /** Resolved type for this card after the Type 4 assignment + fallback. */
+  type: FixedType;
+}
+
+interface SessionResult {
+  card: ChallengeCard;
+  type: FixedType;
+  correct: boolean;
+  attempts: number;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+const HAS_KANJI = /[一-鿿]/;
+
+function isKanjiWord(word: string): boolean {
+  return HAS_KANJI.test(word);
+}
+
+function checkAnswer(input: string, expected: string): boolean {
+  const normalize = (s: string) =>
+    s.trim().toLowerCase()
+     .replace(/\s+/g, "")
+     .replace(/[・･]/g, "");
+  return normalize(input) === normalize(expected);
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Deck.cards is JSON without id; produce stable, normalised challenge cards
+ *  and drop entries that miss any required Type-1 fields (word, meaning). */
+function deckToChallengeCards(deck: AnkiDeck): ChallengeCard[] {
+  return deck.cards
+    .map((c, idx) => ({
+      vocab_id: String(c.vocab_id ?? `${deck.id}-${idx}`),
+      word:     String(c.word ?? "").trim(),
+      reading:  String(c.reading ?? "").trim(),
+      meaning:  String(c.meaning ?? "").trim(),
+      han_viet: String(c.han_viet ?? "").trim(),
+    }))
+    .filter((c) => c.word && c.meaning);
+}
+
+/** Build session for a fixed type. Type 3 filters out cards without kanji
+ *  or without han_viet. */
+function buildFixedSession(cards: ChallengeCard[], type: FixedType): SessionCard[] {
+  let pool = cards;
+  if (type === 3) {
+    pool = cards.filter((c) => isKanjiWord(c.word) && c.han_viet.length > 0);
+  }
+  if (type === 2) {
+    pool = cards.filter((c) => c.reading.length > 0);
+  }
+  return shuffle(pool).map((card) => ({ card, type }));
+}
+
+/** Type 4 assignment — even split across 1/2/3. Cards assigned to type 3
+ *  that aren't valid for it (no kanji or no han_viet) fall back to type 1. */
+function buildMixedSession(cards: ChallengeCard[]): SessionCard[] {
+  const shuffled = shuffle(cards);
+  const total = shuffled.length;
+  const base = Math.floor(total / 3);
+  const rem  = total % 3;
+  const c1 = base + (rem >= 1 ? 1 : 0);
+  const c2 = base + (rem >= 2 ? 1 : 0);
+  const c3 = base;
+
+  const out: SessionCard[] = [];
+  let i = 0;
+  for (let k = 0; k < c1; k++) out.push({ card: shuffled[i++], type: 1 });
+  for (let k = 0; k < c2; k++) {
+    const card = shuffled[i++];
+    out.push({ card, type: card.reading ? 2 : 1 });
+  }
+  for (let k = 0; k < c3; k++) {
+    const card = shuffled[i++];
+    const valid3 = isKanjiWord(card.word) && card.han_viet.length > 0;
+    out.push({ card, type: valid3 ? 3 : 1 });
+  }
+  return shuffle(out);
+}
+
+function getQuestion(card: ChallengeCard, type: FixedType): { question: string; answer: string; placeholder: string; lang?: string } {
+  switch (type) {
+    case 1: return { question: `「${card.meaning}」tiếng Nhật là gì?`,           answer: card.word,    placeholder: "Gõ chữ Nhật...",   lang: "ja" };
+    case 2: return { question: `「${card.word}」đọc như thế nào? (furigana)`,    answer: card.reading, placeholder: "Gõ furigana...",   lang: "ja" };
+    case 3: return { question: `「${card.word}」âm Hán Việt là gì?`,             answer: card.han_viet, placeholder: "Gõ Hán Việt..." };
+  }
+}
+
+// ── Component ───────────────────────────────────────────────────────────
+
+interface Props {
+  decks: AnkiDeck[];
+  isLoggedIn: boolean;
+}
+
+export default function ChallengeTab({ decks, isLoggedIn }: Props) {
+  const [mode, setMode]               = useState<ChallengeMode>("select-deck");
+  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
+  const [selectedType, setSelectedType]     = useState<ChallengeType>(1);
+  const [maxAttempts, setMaxAttempts]       = useState<number>(3);
+  const [sessionCards, setSessionCards]     = useState<SessionCard[]>([]);
+  const [currentIndex, setCurrentIndex]     = useState(0);
+  const [userInput, setUserInput]           = useState("");
+  const [attempts, setAttempts]             = useState(0);
+  const [lastResult, setLastResult]         = useState<"correct" | "wrong" | null>(null);
+  const [showAnswer, setShowAnswer]         = useState(false);
+  const [results, setResults]               = useState<SessionResult[]>([]);
+  const [emptyMsg, setEmptyMsg]             = useState<string | null>(null);
+
+  const selectedDeck = useMemo(
+    () => decks.find((d) => d.id === selectedDeckId) ?? null,
+    [decks, selectedDeckId],
+  );
+
+  // Pre-compute card count + valid Type-3 count per deck for the deck list.
+  const deckSummaries = useMemo(() => decks.map((d) => {
+    const cards = deckToChallengeCards(d);
+    return {
+      id:           d.id,
+      name:         d.name,
+      total:        cards.length,
+      type3Count:   cards.filter((c) => isKanjiWord(c.word) && c.han_viet.length > 0).length,
+    };
+  }), [decks]);
+
+  function pickDeck(deckId: string) {
+    setSelectedDeckId(deckId);
+    setEmptyMsg(null);
+    setMode("select-type");
+  }
+
+  function startSession(type: ChallengeType) {
+    if (!selectedDeck) return;
+    const cards = deckToChallengeCards(selectedDeck);
+    if (cards.length === 0) {
+      setEmptyMsg("Bộ thẻ này không có thẻ nào hợp lệ để luyện.");
+      return;
+    }
+    let session: SessionCard[];
+    if (type === 4) {
+      session = buildMixedSession(cards);
+    } else {
+      session = buildFixedSession(cards, type);
+    }
+    if (session.length === 0) {
+      setEmptyMsg(
+        type === 3 ? "Bộ thẻ này không có từ Hán Việt để luyện."
+        : type === 2 ? "Bộ thẻ này không có từ nào có cách đọc."
+        : "Bộ thẻ này không có thẻ nào hợp lệ.",
+      );
+      return;
+    }
+    setSelectedType(type);
+    setSessionCards(session);
+    setCurrentIndex(0);
+    setUserInput("");
+    setAttempts(0);
+    setLastResult(null);
+    setShowAnswer(false);
+    setResults([]);
+    setEmptyMsg(null);
+    setMode("playing");
+  }
+
+  function handleSubmit() {
+    if (!sessionCards[currentIndex]) return;
+    if (lastResult === "correct" || showAnswer) return;
+    const cur = sessionCards[currentIndex];
+    const { answer } = getQuestion(cur.card, cur.type);
+    const ok = checkAnswer(userInput, answer);
+    const nextAttempts = attempts + 1;
+    if (ok) {
+      setLastResult("correct");
+      setAttempts(nextAttempts);
+    } else {
+      setLastResult("wrong");
+      setAttempts(nextAttempts);
+      if (nextAttempts >= maxAttempts) {
+        // Out of attempts — record as wrong; user can still tap "Xem đáp án".
+      }
+    }
+  }
+
+  function handleNext() {
+    const cur = sessionCards[currentIndex];
+    if (!cur) return;
+    const finalCorrect = lastResult === "correct";
+    setResults((prev) => [
+      ...prev,
+      { card: cur.card, type: cur.type, correct: finalCorrect, attempts },
+    ]);
+
+    if (currentIndex + 1 >= sessionCards.length) {
+      setMode("result");
+      return;
+    }
+    setCurrentIndex((i) => i + 1);
+    setUserInput("");
+    setAttempts(0);
+    setLastResult(null);
+    setShowAnswer(false);
+  }
+
+  function restartSameDeck() {
+    if (!selectedDeck) { setMode("select-deck"); return; }
+    startSession(selectedType);
+  }
+
+  function backToSelect() {
+    setMode("select-deck");
+    setSelectedDeckId(null);
+    setSessionCards([]);
+    setResults([]);
+    setEmptyMsg(null);
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────
+
+  if (!isLoggedIn) {
+    return (
+      <div style={{ textAlign: "center", padding: 48, color: "var(--muted)" }}>
+        Đăng nhập để dùng tính năng Challenge.
+      </div>
+    );
+  }
+
+  if (mode === "select-deck") {
+    return (
+      <div style={{ padding: "8px 4px 32px" }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 12, color: "var(--text)" }}>Chọn bộ thẻ để Challenge</h2>
+        {deckSummaries.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", border: "1px dashed var(--border)", borderRadius: 12 }}>
+            Bạn chưa có bộ thẻ nào. Tạo deck từ tab Flashcard SRS trước.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+            {deckSummaries.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => pickDeck(d.id)}
+                disabled={d.total === 0}
+                style={{
+                  padding: 16, borderRadius: 12, border: "1.5px solid var(--border)", background: "var(--white)",
+                  textAlign: "left", cursor: d.total === 0 ? "not-allowed" : "pointer",
+                  fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif",
+                  opacity: d.total === 0 ? 0.5 : 1, transition: "all .15s",
+                }}
+                onMouseEnter={(e) => { if (d.total > 0) (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{d.name}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  {d.total} thẻ{d.type3Count > 0 ? ` · ${d.type3Count} có Hán Việt` : ""}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (mode === "select-type") {
+    return (
+      <div style={{ padding: "8px 4px 32px" }}>
+        <button
+          type="button" className="btn-ghost"
+          onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
+          style={{ marginBottom: 16 }}
+        >← Đổi bộ thẻ</button>
+        <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: "var(--text)" }}>
+          {selectedDeck?.name ?? "—"}
+        </h2>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20 }}>Chọn dạng luyện tập</div>
+
+        <div className="challenge-type-grid">
+          {([
+            { type: 1 as ChallengeType, icon: "✍️", label: "Dạng 1 — Recall chữ Nhật", desc: "Nghĩa tiếng Việt → gõ chữ Nhật" },
+            { type: 2 as ChallengeType, icon: "🔤", label: "Dạng 2 — Recall Furigana",   desc: "Kanji → gõ cách đọc" },
+            { type: 3 as ChallengeType, icon: "🏮", label: "Dạng 3 — Recall Hán Việt",   desc: "Kanji → gõ âm Hán Việt (chỉ từ có kanji)" },
+            { type: 4 as ChallengeType, icon: "🎲", label: "Dạng 4 — Tất cả",            desc: "Mix đều 3 dạng, mỗi từ ngẫu nhiên 1 dạng" },
+          ]).map(({ type, icon, label, desc }) => (
+            <button
+              key={type} type="button"
+              className="challenge-type-btn"
+              onClick={() => startSession(type)}
+            >
+              <div className="type-icon">{icon}</div>
+              <div className="type-label">{label}</div>
+              <div className="type-desc">{desc}</div>
+            </button>
+          ))}
+        </div>
+
+        <div className="challenge-attempts-setting">
+          <label>Số lần thử mỗi câu:</label>
+          <div className="attempts-options">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n} type="button"
+                className={`attempts-btn ${maxAttempts === n ? "active" : ""}`}
+                onClick={() => setMaxAttempts(n)}
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+
+        {emptyMsg && (
+          <div style={{ marginTop: 12, padding: "10px 14px", border: "1px solid #fde047", background: "#fef9c3", borderRadius: 8, color: "#854d0e", fontSize: 13 }}>
+            {emptyMsg}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (mode === "playing") {
+    const cur = sessionCards[currentIndex];
+    if (!cur) return null;
+    const { question, answer, placeholder, lang } = getQuestion(cur.card, cur.type);
+    const exhausted = attempts >= maxAttempts && lastResult !== "correct";
+    return (
+      <div style={{ padding: "8px 4px 32px" }}>
+        <button type="button" className="btn-ghost" onClick={backToSelect} style={{ marginBottom: 16 }}>← Thoát</button>
+        <div className="challenge-card">
+          <div className="challenge-progress">
+            {currentIndex + 1} / {sessionCards.length}
+            <div className="challenge-progress-bar"><div style={{ width: `${(currentIndex / sessionCards.length) * 100}%` }} /></div>
+          </div>
+          <div className="challenge-type-badge">Dạng {cur.type}</div>
+          <div className="challenge-question">{question}</div>
+          <input
+            className={`challenge-input ${lastResult === "correct" ? "correct" : lastResult === "wrong" ? "wrong" : ""}`}
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !showAnswer && lastResult !== "correct" && !exhausted) {
+                handleSubmit();
+              }
+            }}
+            placeholder={placeholder}
+            lang={lang}
+            autoFocus
+            disabled={showAnswer || lastResult === "correct" || exhausted}
+          />
+          <div className="challenge-attempts-indicator">
+            {Array.from({ length: maxAttempts }).map((_, i) => {
+              const isLastAttempt = i === attempts - 1;
+              const used = i < attempts;
+              const cls = used
+                ? (lastResult === "correct" && isLastAttempt ? "correct" : "used")
+                : "";
+              return <span key={i} className={`attempt-dot ${cls}`} />;
+            })}
+          </div>
+
+          {lastResult === "correct" && <div className="challenge-feedback correct">✅ Đúng rồi!</div>}
+          {lastResult === "wrong" && attempts < maxAttempts && (
+            <div className="challenge-feedback wrong">❌ Sai, thử lại!</div>
+          )}
+          {exhausted && (
+            <div className="challenge-feedback wrong">❌ Hết lượt thử</div>
+          )}
+
+          {showAnswer && (
+            <div className="challenge-answer">Đáp án: <strong>{answer}</strong></div>
+          )}
+
+          <div className="challenge-actions">
+            {!showAnswer && lastResult !== "correct" && !exhausted && (
+              <button type="button" className="btn-accent" onClick={handleSubmit}>Kiểm tra</button>
+            )}
+            {!showAnswer && lastResult !== "correct" && (
+              <button type="button" className="btn-ghost" onClick={() => setShowAnswer(true)}>👁 Xem đáp án</button>
+            )}
+            {(showAnswer || lastResult === "correct" || exhausted) && (
+              <button type="button" className="btn-primary" onClick={handleNext}>
+                {currentIndex + 1 >= sessionCards.length ? "Xem kết quả →" : "Tiếp tục →"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // mode === "result"
+  const correctList = results.filter((r) => r.correct);
+  const wrongList   = results.filter((r) => !r.correct);
+  return (
+    <div className="challenge-result">
+      <div className="challenge-result-score">{correctList.length} / {results.length}</div>
+      <div className="challenge-result-label">câu đúng</div>
+
+      <div className="challenge-result-breakdown">
+        <div className="result-group">
+          <div className="result-group-title">✅ Đúng ({correctList.length})</div>
+          <div className="result-words">
+            {correctList.length === 0
+              ? <span style={{ fontSize: 13, color: "var(--muted)" }}>—</span>
+              : correctList.map((r) => (
+                <span key={r.card.vocab_id + ":" + r.type} className="result-word correct" title={`Dạng ${r.type}`}>{r.card.word}</span>
+              ))}
+          </div>
+        </div>
+        <div className="result-group">
+          <div className="result-group-title">❌ Sai ({wrongList.length})</div>
+          <div className="result-words">
+            {wrongList.length === 0
+              ? <span style={{ fontSize: 13, color: "var(--muted)" }}>—</span>
+              : wrongList.map((r) => (
+                <span key={r.card.vocab_id + ":" + r.type} className="result-word wrong" title={`Dạng ${r.type}`}>{r.card.word}</span>
+              ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="challenge-result-actions">
+        <button type="button" className="btn-primary" onClick={restartSameDeck}>🔄 Thử lại</button>
+        <button type="button" className="btn-ghost"   onClick={backToSelect}>← Chọn bộ thẻ khác</button>
+      </div>
+    </div>
+  );
+}
