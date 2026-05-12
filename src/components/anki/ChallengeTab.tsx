@@ -400,7 +400,7 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
         exampleToFont: "'Noto Sans JP',sans-serif",
         stat: "Hiệu quả cao", statColor: "#4a90d9", duration: "5–7 phút" },
       { type: 3, icon: "💬", iconImg: "/challenge/dang3.png", iconBg: "#e8f5e9", iconColor: "#16a34a",
-        label: "Dạng 3 – Recall nghĩa", desc: "",
+        label: "Dạng 3 – Recall Hán Việt", desc: "",
         exampleFrom: "階段", exampleArrow: "→", exampleTo: "Đoạn giai", exampleToColor: "#16a34a",
         stat: "Trung bình", statColor: "#6b6864", duration: "4–6 phút" },
       { type: 4, icon: "🔀", iconBg: "#f3e5f5", iconColor: "#9c5fd9",
