@@ -302,39 +302,103 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
   }
 
   if (mode === "select-type") {
+    const TYPES: {
+      type: ChallengeType; icon: string; iconBg: string; iconColor: string;
+      label: string; desc: string;
+      exampleFrom: string; exampleArrow: string; exampleTo: string; exampleToColor: string; exampleToFont?: string;
+      stat: string; statColor: string; duration: string;
+      examplePreview?: "icons";
+    }[] = [
+      { type: 1, icon: "🪜", iconBg: "#fff0e8", iconColor: "#f26419",
+        label: "Dạng 1 – Recall chữ Nhật", desc: "Nghĩa tiếng Việt → gõ chữ Nhật",
+        exampleFrom: "Cầu thang", exampleArrow: "→", exampleTo: "階段", exampleToColor: "#f26419",
+        exampleToFont: "'Noto Sans JP',sans-serif",
+        stat: "Hiệu quả cao", statColor: "#f26419", duration: "5–7 phút" },
+      { type: 2, icon: "📖", iconBg: "#e3f2fd", iconColor: "#4a90d9",
+        label: "Dạng 2 – Recall Furigana", desc: "Kanji → gõ cách đọc",
+        exampleFrom: "階段", exampleArrow: "→", exampleTo: "かいだん", exampleToColor: "#4a90d9",
+        exampleToFont: "'Noto Sans JP',sans-serif",
+        stat: "Hiệu quả cao", statColor: "#4a90d9", duration: "5–7 phút" },
+      { type: 3, icon: "💬", iconBg: "#e8f5e9", iconColor: "#16a34a",
+        label: "Dạng 3 – Recall nghĩa", desc: "Kanji → gõ nghĩa tiếng Việt",
+        exampleFrom: "階段", exampleArrow: "→", exampleTo: "Đoạn giai", exampleToColor: "#16a34a",
+        stat: "Trung bình", statColor: "#6b6864", duration: "4–6 phút" },
+      { type: 4, icon: "🔀", iconBg: "#f3e5f5", iconColor: "#9c5fd9",
+        label: "Dạng 4 – Tất cả", desc: "Mix đều 3 dạng, mỗi từ ngẫu nhiên 1 dạng",
+        exampleFrom: "", exampleArrow: "", exampleTo: "", exampleToColor: "#9c5fd9",
+        examplePreview: "icons",
+        stat: "Thử thách", statColor: "#9c5fd9", duration: "8–10 phút" },
+    ];
+
     return (
       <div style={{ padding: "8px 4px 32px" }}>
         <button
           type="button" className="btn-ghost"
           onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 20 }}
         >← Đổi bộ thẻ</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: "var(--text)" }}>
-          {selectedDeck?.name ?? "—"}
-        </h2>
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 20 }}>Chọn dạng luyện tập</div>
 
-        <div className="challenge-type-grid">
-          {([
-            { type: 1 as ChallengeType, icon: "✍️", label: "Dạng 1 — Recall chữ Nhật", desc: "Nghĩa tiếng Việt → gõ chữ Nhật" },
-            { type: 2 as ChallengeType, icon: "🔤", label: "Dạng 2 — Recall Furigana",   desc: "Kanji → gõ cách đọc" },
-            { type: 3 as ChallengeType, icon: "🏮", label: "Dạng 3 — Recall Hán Việt",   desc: "Kanji → gõ âm Hán Việt (chỉ từ có kanji)" },
-            { type: 4 as ChallengeType, icon: "🎲", label: "Dạng 4 — Tất cả",            desc: "Mix đều 3 dạng, mỗi từ ngẫu nhiên 1 dạng" },
-          ]).map(({ type, icon, label, desc }) => (
-            <button
-              key={type} type="button"
-              className="challenge-type-btn"
-              onClick={() => startSession(type)}
-            >
-              <div className="type-icon">{icon}</div>
-              <div className="type-label">{label}</div>
-              <div className="type-desc">{desc}</div>
-            </button>
-          ))}
+        {/* Deck header — bullseye icon + name + subtitle */}
+        <div className="challenge-deck-header">
+          <div className="challenge-deck-icon">🎯</div>
+          <div>
+            <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
+            <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
+          </div>
         </div>
 
-        <div className="challenge-attempts-setting">
-          <label>Số lần thử mỗi câu:</label>
+        {/* 4 type cards — click to preview, "Bắt đầu" to start */}
+        <div className="challenge-type-grid">
+          {TYPES.map((t) => {
+            const isActive = selectedType === t.type;
+            return (
+              <button
+                key={t.type} type="button"
+                className={`challenge-type-card ${isActive ? "active" : ""}`}
+                onClick={() => { setSelectedType(t.type); setEmptyMsg(null); }}
+                aria-pressed={isActive}
+              >
+                {isActive && <span className="challenge-type-check">✓</span>}
+                <div className="challenge-type-icon-wrap" style={{ background: t.iconBg, color: t.iconColor }}>
+                  <span>{t.icon}</span>
+                </div>
+                <div className="challenge-type-label">{t.label}</div>
+                <div className="challenge-type-desc">{t.desc}</div>
+
+                <div className="challenge-example-box">
+                  <div className="challenge-example-label">Ví dụ</div>
+                  {t.examplePreview === "icons" ? (
+                    <div className="challenge-example-icons">
+                      <span style={{ background: "#fff0e8", color: "#f26419" }}>🪜</span>
+                      <span className="challenge-example-plus">+</span>
+                      <span style={{ background: "#e3f2fd", color: "#4a90d9" }}>📖</span>
+                      <span className="challenge-example-plus">+</span>
+                      <span style={{ background: "#e8f5e9", color: "#16a34a" }}>💬</span>
+                    </div>
+                  ) : (
+                    <div className="challenge-example-row">
+                      <span className="challenge-example-from">{t.exampleFrom}</span>
+                      <span className="challenge-example-arrow">{t.exampleArrow}</span>
+                      <span className="challenge-example-to" style={{ color: t.exampleToColor, fontFamily: t.exampleToFont }}>{t.exampleTo}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="challenge-type-footer">
+                  <span className="challenge-type-stat" style={{ color: t.statColor }}>📊 {t.stat}</span>
+                  <span className="challenge-type-duration">⏱ {t.duration}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Attempts bar with start button */}
+        <div className="challenge-bottom-bar">
+          <div className="challenge-attempts-section">
+            <div className="challenge-attempts-label">Số lần thử mỗi câu</div>
+            <div className="challenge-attempts-sub">Chọn số lần bạn muốn luyện tập</div>
+          </div>
           <div className="attempts-options">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -344,6 +408,13 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
               >{n}</button>
             ))}
           </div>
+          <button
+            type="button"
+            className="challenge-start-btn"
+            onClick={() => startSession(selectedType)}
+          >
+            Bắt đầu luyện tập <span aria-hidden>→</span>
+          </button>
         </div>
 
         {emptyMsg && (
@@ -351,6 +422,38 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
             {emptyMsg}
           </div>
         )}
+
+        {/* Feature strip */}
+        <div className="challenge-features-strip">
+          <div className="challenge-feature">
+            <div className="challenge-feature-icon" style={{ background: "#fff0e8", color: "#f26419" }}>🎯</div>
+            <div>
+              <div className="challenge-feature-title">Ghi nhớ chủ động</div>
+              <div className="challenge-feature-desc">Tăng khả năng nhớ lâu dài</div>
+            </div>
+          </div>
+          <div className="challenge-feature">
+            <div className="challenge-feature-icon" style={{ background: "#e3f2fd", color: "#4a90d9" }}>📅</div>
+            <div>
+              <div className="challenge-feature-title">Lặp lại thông minh</div>
+              <div className="challenge-feature-desc">Ôn đúng thời điểm sắp quên</div>
+            </div>
+          </div>
+          <div className="challenge-feature">
+            <div className="challenge-feature-icon" style={{ background: "#e8f5e9", color: "#16a34a" }}>📊</div>
+            <div>
+              <div className="challenge-feature-title">Theo dõi tiến độ</div>
+              <div className="challenge-feature-desc">Xem thống kê chi tiết</div>
+            </div>
+          </div>
+          <div className="challenge-feature">
+            <div className="challenge-feature-icon" style={{ background: "#fff7e0", color: "#d4890a" }}>🥇</div>
+            <div>
+              <div className="challenge-feature-title">Nâng cao mỗi ngày</div>
+              <div className="challenge-feature-desc">Tiến bộ qua từng thử thách</div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
