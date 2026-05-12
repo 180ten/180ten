@@ -484,7 +484,7 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
             {!showAnswer && lastResult !== "correct" && !exhausted && (
               <button type="button" className="btn-accent" onClick={handleSubmit}>Kiểm tra</button>
             )}
-            {!showAnswer && lastResult !== "correct" && (
+            {!showAnswer && lastResult !== "correct" && attempts > 0 && (
               <button type="button" className="btn-ghost" onClick={() => setShowAnswer(true)}>👁 Xem đáp án</button>
             )}
             {(showAnswer || lastResult === "correct" || exhausted) && (
