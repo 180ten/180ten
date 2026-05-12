@@ -290,9 +290,7 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
               >
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{d.name}</div>
-                <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                  {d.total} thẻ{d.type3Count > 0 ? ` · ${d.type3Count} có Hán Việt` : ""}
-                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>{d.total} thẻ</div>
               </button>
             ))}
           </div>
