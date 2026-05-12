@@ -12,7 +12,7 @@
 //
 // State is component-local — nothing persisted (a session is a session).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnkiDeck, SrsEntry } from "@/hooks/useAnki";
 
 type ChallengeMode = "select-deck" | "select-type" | "playing" | "result";
@@ -159,6 +159,7 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
   const [showAnswer, setShowAnswer]         = useState(false);
   const [results, setResults]               = useState<SessionResult[]>([]);
   const [emptyMsg, setEmptyMsg]             = useState<string | null>(null);
+  const inputRef                            = useRef<HTMLInputElement>(null);
 
   const selectedDeck = useMemo(
     () => decks.find((d) => d.id === selectedDeckId) ?? null,
@@ -292,6 +293,15 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
     setResults([]);
     setEmptyMsg(null);
   }
+
+  // Auto-focus the input on every new card so the user can keep typing
+  // without clicking. autoFocus only fires on the initial mount; the
+  // input element is re-used across cards, so we have to focus manually.
+  useEffect(() => {
+    if (mode !== "playing") return;
+    const el = inputRef.current;
+    if (el && !el.disabled) el.focus();
+  }, [mode, currentIndex]);
 
   // After "✅ Đúng rồi!" appears the input is disabled, so a second Enter
   // would do nothing. Listen at the window level and advance to the next
@@ -544,6 +554,7 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
           <div className="challenge-type-badge">Dạng {cur.type}</div>
           <div className="challenge-question">{question}</div>
           <input
+            ref={inputRef}
             className={`challenge-input ${lastResult === "correct" ? "correct" : lastResult === "wrong" ? "wrong" : ""}`}
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
