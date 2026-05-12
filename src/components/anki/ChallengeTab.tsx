@@ -420,7 +420,9 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
 
         {/* Deck header — bullseye icon + name + subtitle */}
         <div className="challenge-deck-header">
-          <div className="challenge-deck-icon">🎯</div>
+          <div className="challenge-deck-icon">
+            <img src="/svg/target2.svg" alt="" width={28} height={28} style={{ display: "block" }} />
+          </div>
           <div>
             <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
             <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
