@@ -604,37 +604,85 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
   // mode === "result"
   const correctList = results.filter((r) => r.correct);
   const wrongList   = results.filter((r) => !r.correct);
+  // 4-pointed star path (matches the reference's lucide-style sparkle).
+  const starPath = "M12 2l2.4 7.4h7.6l-6.1 4.5 2.3 7.1-6.2-4.4-6.2 4.4 2.3-7.1-6.1-4.5h7.6z";
   return (
     <div className="challenge-result">
-      <div className="challenge-result-score">{correctList.length} / {results.length}</div>
-      <div className="challenge-result-label">câu đúng</div>
+      {/* Score circle with sparkles + ribbon */}
+      <div className="chresult-score-wrap">
+        <span className="chresult-sparkle s1" aria-hidden>
+          <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d={starPath} /></svg>
+        </span>
+        <span className="chresult-sparkle s2" aria-hidden>
+          <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d={starPath} /></svg>
+        </span>
+        <span className="chresult-sparkle s3" aria-hidden>
+          <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d={starPath} /></svg>
+        </span>
+        <span className="chresult-sparkle s4" aria-hidden>
+          <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d={starPath} /></svg>
+        </span>
 
-      <div className="challenge-result-breakdown">
-        <div className="result-group">
-          <div className="result-group-title">✅ Đúng ({correctList.length})</div>
-          <div className="result-words">
-            {correctList.length === 0
-              ? <span style={{ fontSize: 13, color: "var(--muted)" }}>—</span>
-              : correctList.map((r) => (
-                <span key={r.card.vocab_id + ":" + r.type} className="result-word correct" title={`Dạng ${r.type}`}>{r.card.word}</span>
-              ))}
+        <div className="chresult-circle">
+          <div className="chresult-score">
+            {correctList.length}
+            <span className="chresult-slash">/</span>
+            {results.length}
           </div>
-        </div>
-        <div className="result-group">
-          <div className="result-group-title">❌ Sai ({wrongList.length})</div>
-          <div className="result-words">
-            {wrongList.length === 0
-              ? <span style={{ fontSize: 13, color: "var(--muted)" }}>—</span>
-              : wrongList.map((r) => (
-                <span key={r.card.vocab_id + ":" + r.type} className="result-word wrong" title={`Dạng ${r.type}`}>{r.card.word}</span>
-              ))}
+          <div className="chresult-ribbon">
+            <span className="chresult-ribbon-flap left" aria-hidden />
+            CÂU ĐÚNG
+            <span className="chresult-ribbon-flap right" aria-hidden />
           </div>
         </div>
       </div>
 
-      <div className="challenge-result-actions">
-        <button type="button" className="btn-primary" onClick={restartSameDeck}>🔄 Thử lại</button>
-        <button type="button" className="btn-ghost"   onClick={backToSelect}>← Chọn bộ thẻ khác</button>
+      {/* Đúng / Sai summary */}
+      <div className="chresult-summary">
+        <div className="chresult-summary-col">
+          <div className="chresult-summary-icon ok" aria-hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          </div>
+          <span className="chresult-summary-text">
+            Đúng <span className="ok">({correctList.length})</span>
+          </span>
+        </div>
+        <div className="chresult-summary-divider" aria-hidden />
+        <div className="chresult-summary-col">
+          <div className="chresult-summary-icon bad" aria-hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </div>
+          <span className="chresult-summary-text">
+            Sai <span className="bad">({wrongList.length})</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Word pills */}
+      {results.length > 0 && (
+        <div className="chresult-tags">
+          {results.map((r, i) => (
+            <span
+              key={r.card.vocab_id + ":" + r.type + ":" + i}
+              className={`chresult-tag ${r.correct ? "ok" : "bad"}`}
+              title={`Dạng ${r.type}`}
+            >
+              {r.card.word}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="chresult-actions">
+        <button type="button" className="chresult-btn primary" onClick={restartSameDeck}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+          Thử lại
+        </button>
+        <button type="button" className="chresult-btn secondary" onClick={backToSelect}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+          Chọn bộ thẻ khác
+        </button>
       </div>
     </div>
   );
