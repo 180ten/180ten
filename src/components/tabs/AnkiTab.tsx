@@ -605,6 +605,11 @@ export default function AnkiTab({
   const [noAnim, setNoAnim] = useState(false);
   const cardBoxRef = useRef<HTMLDivElement>(null);
   const rateBusyRef = useRef(false);
+  // Refs for the swipe-direction hint overlays. We mutate opacity inline
+  // during touchmove instead of going through React state so we don't
+  // re-render on every frame of the drag.
+  const swipeYesHintRef = useRef<HTMLDivElement>(null);
+  const swipeNoHintRef  = useRef<HTMLDivElement>(null);
   // Ref to CardBack — lets the keyboard handler toggle examples from the parent
   const cardBackRef = useRef<CardBackHandle>(null);
   // Stable refs so keyboard handler doesn't go stale
@@ -717,6 +722,111 @@ export default function AnkiTab({
   }
 
   handleRateRef.current = handleRate;
+
+  // ── Touch swipe (mobile) ────────────────────────────────────────────
+  // Lướt phải → "Đã biết", lướt trái → "Đang học". Listeners are bound to
+  // .anki-card-box so the inline transform doesn't fight the flip-card's
+  // own rotateX state on .anki-card-el. Only intercepts horizontal
+  // gestures — vertical scroll still works.
+  useEffect(() => {
+    if (!inStudy) return;
+    const box = cardBoxRef.current;
+    if (!box) return;
+
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+    let intent: "horiz" | "vert" | null = null;
+
+    const setHints = (dx: number) => {
+      const yes = swipeYesHintRef.current;
+      const no  = swipeNoHintRef.current;
+      if (yes) yes.style.opacity = dx >  50 ? String(Math.min(1, (dx - 50) / 50)) : "0";
+      if (no)  no.style.opacity  = dx < -50 ? String(Math.min(1, (-dx - 50) / 50)) : "0";
+    };
+    const clearHints = () => setHints(0);
+
+    const onStart = (e: TouchEvent) => {
+      if (rateBusyRef.current) return;
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      dragging = true;
+      intent = null;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!dragging) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+
+      // Lock intent on the first decisive motion so a slight horizontal
+      // wobble during a vertical scroll doesn't hijack the gesture.
+      if (intent === null) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        intent = Math.abs(dx) > Math.abs(dy) ? "horiz" : "vert";
+      }
+      if (intent !== "horiz") return;
+
+      e.preventDefault();
+      const rot = dx * 0.05;
+      box.style.transition = "none";
+      box.style.transform  = `translateX(${dx}px) rotate(${rot}deg)`;
+      setHints(dx);
+    };
+
+    const finishSwipe = (dx: number) => {
+      box.style.transition = "transform 0.3s ease, opacity 0.3s ease";
+      clearHints();
+
+      const THRESHOLD = 80;
+      if (dx > THRESHOLD || dx < -THRESHOLD) {
+        const dir = dx > 0 ? 1 : -1;
+        box.style.transform = `translateX(${dir * 120}%) rotate(${dir * 20}deg)`;
+        box.style.opacity   = "0";
+        window.setTimeout(() => {
+          // Reset inline styles so handleRate's overlay + fling animation
+          // controls the visible card from here. rate-dimmed hides the
+          // card faces immediately, so the box snapping back to opacity 1
+          // for one frame isn't visible.
+          box.style.transition = "";
+          box.style.transform  = "";
+          box.style.opacity    = "";
+          handleRateRef.current(dir > 0 ? "yes" : "no");
+        }, 300);
+      } else {
+        // Snap back.
+        box.style.transform = "";
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      if (intent !== "horiz") { clearHints(); return; }
+      const dx = e.changedTouches[0].clientX - startX;
+      finishSwipe(dx);
+    };
+
+    const onCancel = () => {
+      if (!dragging) return;
+      dragging = false;
+      box.style.transition = "transform 0.2s ease";
+      box.style.transform  = "";
+      clearHints();
+    };
+
+    box.addEventListener("touchstart",  onStart,  { passive: true });
+    box.addEventListener("touchmove",   onMove,   { passive: false });
+    box.addEventListener("touchend",    onEnd);
+    box.addEventListener("touchcancel", onCancel);
+    return () => {
+      box.removeEventListener("touchstart",  onStart);
+      box.removeEventListener("touchmove",   onMove);
+      box.removeEventListener("touchend",    onEnd);
+      box.removeEventListener("touchcancel", onCancel);
+    };
+  }, [inStudy]);
 
   const progressPct =
     studyState?.cards.length
@@ -975,6 +1085,10 @@ export default function AnkiTab({
             {!studyDone && (
               <div className="ql-study-area">
                 <div className="anki-card-box" ref={cardBoxRef} style={{ flex: 1, maxWidth: "none" }}>
+                  {/* Swipe direction hints — opacity controlled inline by
+                      the touch handler, no React re-render per frame. */}
+                  <div className="swipe-hint swipe-hint-yes" ref={swipeYesHintRef} aria-hidden>✓ ĐÃ BIẾT</div>
+                  <div className="swipe-hint swipe-hint-no"  ref={swipeNoHintRef}  aria-hidden>✗ ĐANG HỌC</div>
                   {/* 3-D flip card */}
                   <div
                     className={cardCls}
@@ -1046,6 +1160,12 @@ export default function AnkiTab({
             {!studyDone && (
               <div className="ql-hint" id="ql-hint">
                 Space / ↑↓: lật thẻ &nbsp;·&nbsp; Enter: ví dụ &nbsp;·&nbsp; ←: Đang học &nbsp;·&nbsp; →: Đã biết
+              </div>
+            )}
+            {/* Mobile-only swipe guide */}
+            {!studyDone && (
+              <div className="swipe-guide">
+                👈 Đang học &nbsp;·&nbsp; Đã biết 👉
               </div>
             )}
 
