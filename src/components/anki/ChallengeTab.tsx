@@ -437,7 +437,12 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
 
           {lastResult === "correct" && <div className="challenge-feedback correct">✅ Đúng rồi!</div>}
           {lastResult === "wrong" && (
-            <div className="challenge-feedback wrong">❌ Sai, thử lại!</div>
+            // key={attempts} re-mounts the node each wrong submit so the
+            // shake animation re-plays from the 2nd wrong attempt onward.
+            <div
+              key={attempts}
+              className={`challenge-feedback wrong${attempts >= 2 ? " shake" : ""}`}
+            >❌ Sai, thử lại!</div>
           )}
 
           {showAnswer && (
