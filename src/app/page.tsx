@@ -1190,7 +1190,11 @@ export default function Home() {
               type="button"
               className={`anki-tab-btn ${ankiTab === "challenge" ? "active" : ""}`}
               onClick={() => setAnkiTab("challenge")}
-            >⚔️ Challenge</button>
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <img src="/challenge/challenge-icon.png" alt="" width={20} height={20} style={{ display: "block", objectFit: "contain" }} />
+              Challenge
+            </button>
           </div>
 
           {ankiTab === "srs" && (
