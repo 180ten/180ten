@@ -332,19 +332,18 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
 
     return (
       <div style={{ padding: "0 4px 12px" }}>
-        {/* Back button + deck header on one row to save vertical space */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-          <button
-            type="button" className="btn-ghost"
-            onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
-            style={{ padding: "4px 10px", fontSize: 13 }}
-          >← Đổi bộ thẻ</button>
-          <div className="challenge-deck-header" style={{ marginBottom: 0, flex: 1, minWidth: 0 }}>
-            <div className="challenge-deck-icon">🎯</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
-              <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
-            </div>
+        <button
+          type="button" className="btn-ghost"
+          onClick={() => { setMode("select-deck"); setEmptyMsg(null); }}
+          style={{ padding: "4px 10px", fontSize: 13, marginBottom: 8 }}
+        >← Đổi bộ thẻ</button>
+
+        {/* Deck header — bullseye icon + name + subtitle */}
+        <div className="challenge-deck-header">
+          <div className="challenge-deck-icon">🎯</div>
+          <div>
+            <div className="challenge-deck-name">{selectedDeck?.name ?? "—"}</div>
+            <div className="challenge-deck-sub">Chọn dạng luyện tập phù hợp với mục tiêu của bạn</div>
           </div>
         </div>
 
