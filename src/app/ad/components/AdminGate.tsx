@@ -83,7 +83,7 @@ export default function AdminGate({ onSuccess }: AdminGateProps) {
           <Turnstile
             ref={turnstileRef}
             siteKey={TURNSTILE_SITE_KEY}
-            options={{ size: "invisible" }}
+            options={{ theme: "dark", size: "flexible" }}
             onSuccess={(token) => setCaptchaToken(token)}
             onError={() => setCaptchaToken("")}
             onExpire={() => setCaptchaToken("")}
