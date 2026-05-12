@@ -1672,7 +1672,10 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
    example box loses its tinted background so the watermark shows
    through instead of being clipped to the card border. */
 .challenge-type-card.bg-icon{overflow:hidden;}
-.challenge-type-card.bg-icon > *{position:relative;z-index:1;}
+/* z-index:1 on every direct child EXCEPT the watermark itself — the
+   `> *` rule was matching the bg-icon img too and lifting it on top
+   of the text. */
+.challenge-type-card.bg-icon > *:not(.challenge-type-bg-icon){position:relative;z-index:1;}
 .challenge-type-card.bg-icon .challenge-example-box{background:transparent;}
 .challenge-type-bg-icon{
   position:absolute;
