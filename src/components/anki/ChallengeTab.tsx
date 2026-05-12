@@ -433,29 +433,22 @@ export default function ChallengeTab({ decks, progress, isLoggedIn }: Props) {
         <div className="challenge-type-grid">
           {TYPES.map((t) => {
             const isActive = selectedType === t.type;
-            // Trial: Type 1 uses the icon as a faded watermark in the
-            // bottom-left quadrant instead of a centered top icon.
-            const useBgIcon = t.type === 1 && !!t.iconImg;
             return (
               <button
                 key={t.type} type="button"
-                className={`challenge-type-card ${isActive ? "active" : ""} ${useBgIcon ? "bg-icon" : ""}`}
+                className={`challenge-type-card ${isActive ? "active" : ""}`}
                 onClick={() => { setSelectedType(t.type); setEmptyMsg(null); }}
                 aria-pressed={isActive}
               >
                 {isActive && <span className="challenge-type-check">✓</span>}
-                {useBgIcon ? (
-                  <img src={t.iconImg!} alt="" className="challenge-type-bg-icon" aria-hidden />
-                ) : (
-                  <div
-                    className="challenge-type-icon-wrap"
-                    style={{ background: t.iconBg, color: t.iconColor }}
-                  >
-                    {t.iconImg
-                      ? <img src={t.iconImg} alt="" width={42} height={42} style={{ display: "block", objectFit: "contain" }} />
-                      : <span>{t.icon}</span>}
-                  </div>
-                )}
+                <div
+                  className="challenge-type-icon-wrap"
+                  style={{ background: t.iconBg, color: t.iconColor }}
+                >
+                  {t.iconImg
+                    ? <img src={t.iconImg} alt="" width={42} height={42} style={{ display: "block", objectFit: "contain" }} />
+                    : <span>{t.icon}</span>}
+                </div>
                 <div className="challenge-type-label">{t.label}</div>
                 {t.desc && <div className="challenge-type-desc">{t.desc}</div>}
 

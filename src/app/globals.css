@@ -1666,33 +1666,6 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 .challenge-type-card.active{border-color:var(--accent);background:#fff8f5;box-shadow:0 4px 18px rgba(232,80,42,.12);}
 .challenge-type-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
 .challenge-type-icon-wrap{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto;}
-
-/* Variant: icon as a large faded watermark in the bottom-left corner.
-   The image sits at z-index 0 under every other card element; the
-   example box loses its tinted background so the watermark shows
-   through instead of being clipped to the card border. */
-.challenge-type-card.bg-icon{overflow:hidden;}
-/* z-index:1 on every direct child EXCEPT the watermark itself — the
-   `> *` rule was matching the bg-icon img too and lifting it on top
-   of the text. */
-.challenge-type-card.bg-icon > *:not(.challenge-type-bg-icon){position:relative;z-index:1;}
-.challenge-type-card.bg-icon .challenge-example-box{background:transparent;}
-.challenge-type-bg-icon{
-  position:absolute;
-  z-index:0;
-  /* Watermark = card width, square (aspect-ratio 1). Shifted left by
-     50% of the card so only the right half is visible — that visible
-     half spans roughly the bottom-left half of the card. */
-  bottom:0;
-  left:-50%;
-  width:100%;
-  aspect-ratio:1;
-  object-fit:contain;
-  opacity:.22;
-  filter:blur(.5px) saturate(.85);
-  pointer-events:none;
-  user-select:none;
-}
 .challenge-type-label{font-size:14px;font-weight:800;color:var(--text);line-height:1.3;margin-top:1px;}
 .challenge-type-desc{font-size:12px;color:var(--muted);line-height:1.4;margin-top:-3px;}
 
