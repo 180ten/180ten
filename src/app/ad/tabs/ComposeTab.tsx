@@ -795,6 +795,18 @@ function BunshoForm({ data, onChange, level }: { data: QData; onChange: (d: QDat
         <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 6 }}>Preview đoạn văn</div>
         {rRich(String(data.passage||""))}
       </div>
+      <Fl label="Bản dịch tiếng Việt" hint="Hiện khi học viên bấm nút 翻訳 ở góc đoạn văn (chế độ review).">
+        <Ta
+          value={String((data.vi_translation as string[])?.[0] || "")}
+          onChange={v => {
+            const arr = Array.isArray(data.vi_translation) ? [...(data.vi_translation as string[])] : [];
+            arr[0] = v;
+            onChange({ ...data, vi_translation: arr });
+          }}
+          placeholder="Bản dịch tiếng Việt của đoạn văn..."
+          rows={5}
+        />
+      </Fl>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi nhỏ ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.amber}`, background: C.amber+"15", color: C.amber, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -848,6 +860,19 @@ function ReadingBase({ data, onChange, qPerPassage, multiPassage, typeId, level 
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, background: C.surface }}>
             <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 4 }}>Preview</div>{rRich(p.text||"")}
           </div>
+          <Fl label="Bản dịch tiếng Việt" hint="Hiện khi học viên bấm nút 翻訳 ở góc đoạn văn (chế độ review).">
+            <Ta
+              value={String((data.vi_translation as string[])?.[pi] || "")}
+              onChange={v => {
+                const arr = Array.isArray(data.vi_translation) ? [...(data.vi_translation as string[])] : [];
+                while (arr.length <= pi) arr.push("");
+                arr[pi] = v;
+                onChange({ ...data, vi_translation: arr });
+              }}
+              placeholder={multiPassage ? `Bản dịch đoạn văn ${pi+1}...` : "Bản dịch tiếng Việt của đoạn văn..."}
+              rows={4}
+            />
+          </Fl>
           {(p.questions||[]).map((q, qi) => (
             <div key={qi} style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginTop: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -884,10 +909,23 @@ function TogoForm({ data, onChange, level }: { data: QData; onChange: (d: QData)
           <Fl label="Nội dung" hint="B / I / U / căn lề / size / 　　 / [縦][/縦]">
             <RichTa value={passages[pi]||""} onChange={v => uP(pi,v)} rows={5} placeholder={`Đoạn văn ${pi===0?"A":"B"}...`} />
           </Fl>
-          <div style={{ padding: "10px 14px", background: C.surface, borderRadius: 8 }}>
+          <div style={{ padding: "10px 14px", background: C.surface, borderRadius: 8, marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: C.blue, fontWeight: 700, marginBottom: 4 }}>Preview</div>
             {rRich(passages[pi]||"")}
           </div>
+          <Fl label="Bản dịch tiếng Việt" hint="Hiện khi học viên bấm nút 翻訳 ở góc đoạn văn (chế độ review).">
+            <Ta
+              value={String((data.vi_translation as string[])?.[pi] || "")}
+              onChange={v => {
+                const arr = Array.isArray(data.vi_translation) ? [...(data.vi_translation as string[])] : [];
+                while (arr.length <= pi) arr.push("");
+                arr[pi] = v;
+                onChange({ ...data, vi_translation: arr });
+              }}
+              placeholder={`Bản dịch đoạn văn ${pi===0?"A":"B"}...`}
+              rows={4}
+            />
+          </Fl>
         </div>
       ))}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1126,6 +1164,18 @@ function BjtPassageMcForm({ typeId, data, onChange }: {
       <Fl label="質問（câu hỏi）"><Ta value={String(data.question||"")} onChange={v=>u("question",v)} rows={2} /></Fl>
       <Fl label="Đoạn văn（段落）" hint="B / I / U / căn lề / size / thụt dòng / 縦">
         <RichTa value={String(data.passage||"")} onChange={v=>u("passage",v)} rows={10} placeholder="**太字** *斜体* __下線__ 　　インデント&#10;[縦]縦の文[/縦]" />
+      </Fl>
+      <Fl label="Bản dịch tiếng Việt" hint="Hiện khi học viên bấm nút 翻訳 ở góc đoạn văn (chế độ review).">
+        <Ta
+          value={String((data.vi_translation as string[])?.[0] || "")}
+          onChange={v => {
+            const arr = Array.isArray(data.vi_translation) ? [...(data.vi_translation as string[])] : [];
+            arr[0] = v;
+            onChange({ ...data, vi_translation: arr });
+          }}
+          placeholder="Bản dịch tiếng Việt của đoạn văn..."
+          rows={5}
+        />
       </Fl>
       <Fl label="Đáp án đúng"><Inp value={String(data.correct||"")} onChange={v=>u("correct",v)} placeholder="正解" /></Fl>
       <WrongAnswers values={(data.wrongs as string[])||["","",""]} onChange={v=>u("wrongs",v)} />

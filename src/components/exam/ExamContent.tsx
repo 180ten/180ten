@@ -714,12 +714,18 @@ function getPassageDensity(text: string): "short" | "medium" | "long" | "dense" 
 const PassageBlock = memo(function PassageBlock({
   text,
   applyTags = false,
+  viTranslation,
 }: {
   text: string;
   applyTags?: boolean;
+  /** Vietnamese translation for this passage. Only renders the toggle
+   *  button in review mode (applyTags=true) AND when this is non-empty. */
+  viTranslation?: string;
 }) {
   const { body, notes } = splitPassageNotes(text);
   const density = getPassageDensity(body || text);
+  const [showVi, setShowVi] = useState(false);
+  const hasTranslation = applyTags && !!viTranslation && viTranslation.trim().length > 0;
 
   // applyTags=true (review): React-render structured segments inside an
   // inner <div> that mimics renderRich's wrapper (so .passage-card-body > div
@@ -734,37 +740,60 @@ const PassageBlock = memo(function PassageBlock({
   return (
     <div
       className={`q-block q-passage-block passage-density-${density}`}
+      style={{ position: "relative" }}
     >
-      {body && (
-        <div className="passage-card-body">
-          {applyTags ? (
-            <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-              <VocabSegments text={body} renderText={sanitizedRenderRichInline} />
-            </div>
-          ) : (
-            renderBody(body)
-          )}
-        </div>
+      {hasTranslation && (
+        <button
+          type="button"
+          className={`passage-translate-btn${showVi ? " active" : ""}`}
+          onClick={() => setShowVi((v) => !v)}
+          title={showVi ? "Quay lại tiếng Nhật" : "Xem bản dịch tiếng Việt"}
+          aria-pressed={showVi}
+          aria-label={showVi ? "Hiện bản gốc tiếng Nhật" : "Hiện bản dịch tiếng Việt"}
+        >
+          <img src="/svg/translate.svg" alt="" width={18} height={18} aria-hidden />
+        </button>
       )}
-      {notes.length > 0 && (
-        <div className="passage-note-box">
-          <div className="passage-note-lines">
-            {notes.map((note, idx) => (
-              <div className="passage-note-line" key={`${note.marker}-${idx}`}>
-                <span className="passage-note-marker">{note.marker}</span>
-                <span className="passage-note-text">
-                  {applyTags ? (
-                    <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                      <VocabSegments text={note.text} renderText={sanitizedRenderRichInline} />
-                    </div>
-                  ) : (
-                    renderBody(note.text)
-                  )}
-                </span>
-              </div>
-            ))}
+      {showVi && hasTranslation ? (
+        <div className="passage-card-body">
+          <div style={{ fontSize: 16, lineHeight: 1.9, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif" }}>
+            {viTranslation}
           </div>
         </div>
+      ) : (
+        <>
+          {body && (
+            <div className="passage-card-body">
+              {applyTags ? (
+                <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                  <VocabSegments text={body} renderText={sanitizedRenderRichInline} />
+                </div>
+              ) : (
+                renderBody(body)
+              )}
+            </div>
+          )}
+          {notes.length > 0 && (
+            <div className="passage-note-box">
+              <div className="passage-note-lines">
+                {notes.map((note, idx) => (
+                  <div className="passage-note-line" key={`${note.marker}-${idx}`}>
+                    <span className="passage-note-marker">{note.marker}</span>
+                    <span className="passage-note-text">
+                      {applyTags ? (
+                        <div style={{ fontSize: 16, lineHeight: 2, color: "#1a1917", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                          <VocabSegments text={note.text} renderText={sanitizedRenderRichInline} />
+                        </div>
+                      ) : (
+                        renderBody(note.text)
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -851,6 +880,12 @@ function ReadingContent({
     const passagesRaw = q.passages as PassageGroup[] | string[] | undefined;
     const passage     = q.passage as string | undefined;
     const subQs       = q.questions as SubQuestion[] | undefined;
+    // Vietnamese translations for the row's passages, indexed by passage
+    // position. JSONB column on questions; null/missing = no translation.
+    const viTrans     = (q as { vi_translation?: unknown }).vi_translation;
+    const viList: string[] = Array.isArray(viTrans)
+      ? (viTrans as unknown[]).map((s) => (typeof s === "string" ? s : ""))
+      : [];
 
     // togo (統合理解) compact shape: passages = [textA, textB] + shared
     // top-level `questions`. Composer + CSV import both produce this shape.
@@ -883,7 +918,7 @@ function ReadingContent({
               {label}
             </div>
           );
-          left.push(<PassageBlock key={`${id}-pt-${pIdx}`} text={text} applyTags={submitted} />);
+          left.push(<PassageBlock key={`${id}-pt-${pIdx}`} text={text} applyTags={submitted} viTranslation={viList[pIdx]} />);
           renderedPassageCount++;
         }
       });
@@ -924,7 +959,7 @@ function ReadingContent({
           elems.push(
             <PassageSplit
               key={`${id}-split-${pIdx}`}
-              left={<PassageBlock key={`${id}-pt-${pIdx}`} text={p.text} applyTags={submitted} />}
+              left={<PassageBlock key={`${id}-pt-${pIdx}`} text={p.text} applyTags={submitted} viTranslation={viList[pIdx]} />}
               right={right}
             />
           );
@@ -951,7 +986,7 @@ function ReadingContent({
       elems.push(
         <PassageSplit
           key={`${id}-bunsho-split`}
-          left={<PassageBlock key={`${id}-passage`} text={passage} applyTags={submitted} />}
+          left={<PassageBlock key={`${id}-passage`} text={passage} applyTags={submitted} viTranslation={viList[0]} />}
           right={right}
           equalWidth
         />
@@ -978,7 +1013,7 @@ function ReadingContent({
         elems.push(
           <PassageSplit
             key={`${id}-simple-split`}
-            left={<PassageBlock key={`${id}-p`} text={passageStr} applyTags={submitted} />}
+            left={<PassageBlock key={`${id}-p`} text={passageStr} applyTags={submitted} viTranslation={viList[0]} />}
             right={[qBlock]}
           />
         );

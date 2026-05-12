@@ -319,6 +319,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .q-block{--q-pad-x:22px;--q-pad-y:20px;position:relative;background:var(--white);border:1px solid #dedbd3;border-radius:18px;padding:var(--q-pad-y) var(--q-pad-x);margin-bottom:12px;color:#1a1917;box-shadow:0 8px 26px rgba(32,28,22,.045);transition:box-shadow .15s,border-color .15s,transform .15s;container-type:inline-size;}
 .q-block:hover{border-color:#d4d0c6;box-shadow:0 12px 34px rgba(32,28,22,.07);}
 .q-passage-block{--q-pad-x:32px;--q-pad-y:28px;--passage-font-size:20px;--passage-line-height:2.18;display:flex;flex-direction:column;min-height:0;background:#fffdf9;border-color:#dedbd3;}
+.passage-translate-btn{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--accent);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,border-color .15s,color .15s;z-index:5;padding:0;}
+.passage-translate-btn:hover{border-color:var(--accent);background:#fff8f5;}
+.passage-translate-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.passage-translate-btn.active img{filter:brightness(0) invert(1);}
 .passage-card-body{flex:1;min-height:0;padding-top:2px;color:#171615;font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
 .passage-card-body > div{font-size:var(--passage-font-size)!important;line-height:var(--passage-line-height)!important;}
 .passage-card-body ruby rt{font-size:.58em;color:#3f3a34;font-weight:600;}
