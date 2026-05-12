@@ -433,10 +433,6 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
       <div style={{ padding: "8px 4px 32px" }}>
         <button type="button" className="btn-ghost" onClick={backToSelect} style={{ marginBottom: 16 }}>← Thoát</button>
         <div className="challenge-card">
-          <div className="challenge-progress">
-            {currentIndex + 1} / {sessionCards.length}
-            <div className="challenge-progress-bar"><div style={{ width: `${(currentIndex / sessionCards.length) * 100}%` }} /></div>
-          </div>
           <div className="challenge-type-badge">Dạng {cur.type}</div>
           <div className="challenge-question">{question}</div>
           <input
