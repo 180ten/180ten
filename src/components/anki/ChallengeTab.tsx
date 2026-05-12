@@ -310,21 +310,21 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
       examplePreview?: "icons";
     }[] = [
       { type: 1, icon: "🪜", iconBg: "#fff0e8", iconColor: "#f26419",
-        label: "Dạng 1 – Recall chữ Nhật", desc: "Nghĩa tiếng Việt → gõ chữ Nhật",
+        label: "Dạng 1 – Recall tiếng Nhật", desc: "",
         exampleFrom: "Cầu thang", exampleArrow: "→", exampleTo: "階段", exampleToColor: "#f26419",
         exampleToFont: "'Noto Sans JP',sans-serif",
         stat: "Hiệu quả cao", statColor: "#f26419", duration: "5–7 phút" },
       { type: 2, icon: "📖", iconBg: "#e3f2fd", iconColor: "#4a90d9",
-        label: "Dạng 2 – Recall Furigana", desc: "Kanji → gõ cách đọc",
+        label: "Dạng 2 – Recall Furigana", desc: "",
         exampleFrom: "階段", exampleArrow: "→", exampleTo: "かいだん", exampleToColor: "#4a90d9",
         exampleToFont: "'Noto Sans JP',sans-serif",
         stat: "Hiệu quả cao", statColor: "#4a90d9", duration: "5–7 phút" },
       { type: 3, icon: "💬", iconBg: "#e8f5e9", iconColor: "#16a34a",
-        label: "Dạng 3 – Recall nghĩa", desc: "Kanji → gõ nghĩa tiếng Việt",
+        label: "Dạng 3 – Recall nghĩa", desc: "",
         exampleFrom: "階段", exampleArrow: "→", exampleTo: "Đoạn giai", exampleToColor: "#16a34a",
         stat: "Trung bình", statColor: "#6b6864", duration: "4–6 phút" },
       { type: 4, icon: "🔀", iconBg: "#f3e5f5", iconColor: "#9c5fd9",
-        label: "Dạng 4 – Tất cả", desc: "Mix đều 3 dạng, mỗi từ ngẫu nhiên 1 dạng",
+        label: "Dạng 4 – Tất cả", desc: "",
         exampleFrom: "", exampleArrow: "", exampleTo: "", exampleToColor: "#9c5fd9",
         examplePreview: "icons",
         stat: "Thử thách", statColor: "#9c5fd9", duration: "8–10 phút" },
@@ -363,7 +363,7 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
                   <span>{t.icon}</span>
                 </div>
                 <div className="challenge-type-label">{t.label}</div>
-                <div className="challenge-type-desc">{t.desc}</div>
+                {t.desc && <div className="challenge-type-desc">{t.desc}</div>}
 
                 <div className="challenge-example-box">
                   <div className="challenge-example-label">Ví dụ</div>
