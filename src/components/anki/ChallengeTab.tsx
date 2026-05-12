@@ -488,7 +488,7 @@ export default function ChallengeTab({ decks, isLoggedIn }: Props) {
               <button type="button" className="btn-ghost" onClick={() => setShowAnswer(true)}>👁 Xem đáp án</button>
             )}
             {(showAnswer || lastResult === "correct" || exhausted) && (
-              <button type="button" className="btn-primary" onClick={handleNext}>
+              <button type="button" className="btn-accent" onClick={handleNext}>
                 {currentIndex + 1 >= sessionCards.length ? "Xem kết quả →" : "Tiếp tục →"}
               </button>
             )}
