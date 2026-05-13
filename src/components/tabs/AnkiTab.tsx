@@ -281,7 +281,10 @@ const CardBack = forwardRef<CardBackHandle, { card: AnkiCard }>(function CardBac
   const showAllVi = showMoreVi || activePanelRows.length <= ROWS_PREVIEW;
   const visibleRows = showAllVi ? activePanelRows : activePanelRows.slice(0, ROWS_PREVIEW);
   const hasMore = activePanelRows.length > ROWS_PREVIEW;
-  const headerMeaning = (showJp && hasJp) ? jpRows[0]?.text || viShort : viShort;
+  // In JP mode the user wants the *short* meaning header hidden behind a
+  // "ー" placeholder so it doesn't echo the answer; the long-meaning rows
+  // (visibleRows below) still display their JP text as usual.
+  const headerMeaning = (showJp && hasJp) ? "ー" : viShort;
 
   return (
     <div className="acb-card">
