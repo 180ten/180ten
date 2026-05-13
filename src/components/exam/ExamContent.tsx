@@ -613,10 +613,11 @@ function QBlock({
   const hasSideImg = !!sideImageUrl;
 
   // Tagged words for the auto-vocab grid (review mode only). Combines parent
-  // passage + this sub-question's stem so each card surfaces its full context.
+  // passage + this sub-question's stem + every answer choice so each card
+  // surfaces vocab from anywhere it could plausibly appear.
   const taggedWords = useMemo(() => {
     if (!submitted) return [] as string[];
-    const combined = `${passageText ?? ""}\n${qText ?? ""}`;
+    const combined = [passageText ?? "", qText ?? "", ...choices].join("\n");
     const all = extractTaggedWords(combined);
     // Preserve order but de-dupe
     const seen = new Set<string>();
@@ -627,7 +628,7 @@ function QBlock({
       seen.add(k); out.push(k);
     }
     return out;
-  }, [submitted, passageText, qText]);
+  }, [submitted, passageText, qText, choices]);
 
   // qText render: review mode → structured segments (each text span gets the
   // qType-specific renderer; vocab span gets renderRichInline). Exam mode →
