@@ -614,8 +614,21 @@ function rRichInline(src: string, key: string): React.ReactNode[] {
         continue;
       }
     }
+    // Furigana: {(漢字)(よみ)} or {(A)(B)} — works in both JP passages and
+    // VI translations. Mirrors parseFurigana() in src/lib/furigana.ts so
+    // the admin preview matches what review actually renders.
+    if (src.startsWith("{(", i)) {
+      const m = src.slice(i).match(/^\{\(([^)]*)\)\(([^)]*)\)\}/);
+      if (m) {
+        out.push(
+          <ruby key={`${key}-r-${i}`}>{m[1]}<rt>{m[2]}</rt></ruby>
+        );
+        i += m[0].length;
+        continue;
+      }
+    }
     let next = src.length;
-    for (const marker of ["[size=", ...richPairTags.map((x) => x.open), "**", "__", "*"]) {
+    for (const marker of ["[size=", ...richPairTags.map((x) => x.open), "**", "__", "*", "{("]) {
       const at = src.indexOf(marker, i + 1);
       if (at >= 0 && at < next) next = at;
     }
