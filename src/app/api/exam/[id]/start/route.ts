@@ -126,23 +126,41 @@ export async function GET(
   });
 
   // Verify JWT locally with the project's HS256 secret — bypasses the
-  // ~400ms round-trip to Supabase auth GoTrue. jose enforces signature +
-  // expiry checks; on any failure (invalid signature, expired, tampered)
-  // we silently fall through to guest mode (same behaviour as before).
+  // ~400ms round-trip to Supabase auth GoTrue in the happy path. On any
+  // failure (invalid signature, expired, key rotation, clock skew, env
+  // missing) we fall back to sb.auth.getUser(token) so identity stays in
+  // sync with /submit-batch and /submit-answer, which always go through
+  // GoTrue. Without this fallback the session_key hashed at /start
+  // (guest mode) wouldn't match the one re-derived at submit (auth user)
+  // → "Session expired" 400 even though the row exists.
   let authUserId: string | null = null;
-  if (token && jwtSecretBytes) {
-    try {
-      const { payload } = await jwtVerify(token, jwtSecretBytes);
-      if (typeof payload.sub === "string" && payload.sub) {
-        authUserId = payload.sub;
+  if (token) {
+    let localOk = false;
+    if (jwtSecretBytes) {
+      try {
+        const { payload } = await jwtVerify(token, jwtSecretBytes);
+        if (typeof payload.sub === "string" && payload.sub) {
+          authUserId = payload.sub;
+          localOk = true;
+        }
+      } catch {
+        // jwtVerify fail (clock skew, key rotation, signature mismatch,
+        // expired) — falls through to GoTrue below.
       }
-    } catch {
-      // invalid / expired — treat as guest
     }
-  } else if (token && !jwtSecretBytes) {
-    // Misconfigured prod: env var missing. Log once per request so the
-    // operator notices, then degrade to guest rather than 500.
-    console.warn("[exam/start] SUPABASE_JWT_SECRET not set — token ignored, treating as guest");
+    if (!localOk) {
+      if (!jwtSecretBytes) {
+        console.warn("[exam/start] SUPABASE_JWT_SECRET not set — falling back to sb.auth.getUser");
+      } else {
+        console.warn("[exam/start] jwtVerify failed, falling back to sb.auth.getUser");
+      }
+      try {
+        const { data: userRes } = await sb.auth.getUser(token);
+        if (userRes?.user?.id) authUserId = userRes.user.id;
+      } catch {
+        // GoTrue also failed — treat as guest (silent, same as before).
+      }
+    }
   }
   const t1 = Date.now();
 
