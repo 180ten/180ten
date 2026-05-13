@@ -1209,23 +1209,33 @@ export default function ExamContent({
       // Position from getBoundingClientRect (viewport-relative).
       // position:fixed is viewport-relative, so do NOT add scrollX/scrollY.
       const rect = tag.getBoundingClientRect();
-      const popupW = 240;
-      const popupH = 200; // estimated for flip decision
+      // POPUP_W slightly above CSS max-width (240) to absorb scrollbar +
+      // sub-pixel rounding on mobile zoomed views. POPUP_H is a
+      // conservative estimate for the flip + clamp decision; the popup
+      // body is internally scrollable past this.
+      const POPUP_W = 260;
+      const POPUP_H = 320;
+      const PADDING = 12;
       const spaceBelow = window.innerHeight - rect.bottom;
-      const showAbove = spaceBelow < popupH && rect.top > popupH;
+      const showAbove = spaceBelow < POPUP_H && rect.top > POPUP_H;
 
-      let left = rect.left;
-      if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8;
-      if (left < 8) left = 8;
+      // Horizontal clamp — keep popup fully inside the viewport.
+      const rawLeft   = rect.left;
+      const maxLeft   = window.innerWidth - POPUP_W - PADDING;
+      const finalLeft = Math.max(PADDING, Math.min(rawLeft, maxLeft));
 
-      const top = showAbove
-        ? rect.top - popupH - 8
+      // Vertical: anchor above or below the trigger first, then clamp
+      // top so the popup never overruns the viewport edges.
+      const rawTop = showAbove
+        ? rect.top - POPUP_H - 8
         : rect.bottom + 8;
+      const maxTop   = window.innerHeight - POPUP_H - PADDING;
+      const finalTop = Math.max(PADDING, Math.min(rawTop, maxTop));
 
       const popupStyle: React.CSSProperties = {
         position: "fixed",
-        top,
-        left,
+        top:  finalTop,
+        left: finalLeft,
         zIndex: 9999,
       };
 
