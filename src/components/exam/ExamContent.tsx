@@ -1,5 +1,5 @@
 "use client";
-import { memo, useMemo, useState, useEffect, useRef } from "react";
+import { Fragment, memo, useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
@@ -14,6 +14,7 @@ import {
   lookupVocab, lookupVocabBulk, prefetchVocab,
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
+import { extractGrammarSegments, stripGrammarTags } from "@/lib/grammarTag";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -40,14 +41,27 @@ function VocabSegments({
 }) {
   const renderV = renderVocab ?? renderText;
   const segs: VocabSegment[] = extractVocabSegments(text);
+  // Each text segment may itself contain 〔...〕 grammar markers. Split
+  // those out into <span class="grammar-tag"> so they render with their
+  // own visual highlight (no popup yet — visual hint only).
+  const renderTextSeg = (value: string, baseKey: number) => {
+    const inner = extractGrammarSegments(value);
+    if (inner.length === 0) return null;
+    return inner.map((part, j) =>
+      part.type === "grammar"
+        ? <span key={`${baseKey}-g-${j}`} className="grammar-tag"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.content)) }} />
+        : <span key={`${baseKey}-t-${j}`}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.value)) }} />
+    );
+  };
   return (
     <>
       {segs.map((seg, i) =>
         seg.type === "vocab"
           ? <span key={i} className="vocab-tag" data-word={seg.word}
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderV(seg.display)) }} />
-          : <span key={i}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(seg.value)) }} />
+          : <Fragment key={i}>{renderTextSeg(seg.value, i)}</Fragment>
       )}
     </>
   );
@@ -500,7 +514,7 @@ function ChoiceBtn({
                   />
                 </span>
               )
-              : <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(stripVocabTags(text), qType)) }} />
+              : <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(stripGrammarTags(stripVocabTags(text)), qType)) }} />
             }
           </>
         )
@@ -677,7 +691,7 @@ function QBlock({
                   renderVocab={renderQTextSafe}
                 />
               </span>
-            : <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQTextSafe(stripVocabTags(qText)) }} />
+            : <span className="q-text" dangerouslySetInnerHTML={{ __html: renderQTextSafe(stripGrammarTags(stripVocabTags(qText))) }} />
         )}
       </div>
       {hasSideImg ? (
@@ -802,7 +816,7 @@ const PassageBlock = memo(function PassageBlock({
   // applyTags=false (exam): strip 【】 entirely, then renderRich + sanitise.
   const renderBody = (s: string) =>
     applyTags ? null : (
-      <div dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(stripVocabTags(s)) }} />
+      <div dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(stripGrammarTags(stripVocabTags(s))) }} />
     );
 
   return (
@@ -1181,7 +1195,7 @@ function ListeningContent({
             <div key={`${id}-t1-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}>
               {submitted
                 ? <VocabSegments text={t1.mainQuestion} renderText={sanitizeHtml} renderVocab={sanitizedRenderRichInline} />
-                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripVocabTags(t1.mainQuestion)) }} />}
+                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripGrammarTags(stripVocabTags(t1.mainQuestion))) }} />}
             </div>
           );
         }
@@ -1200,7 +1214,7 @@ function ListeningContent({
             <div key={`${id}-t2-mq`} style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: 8, marginBottom: 10, fontSize: 13 }}>
               {submitted
                 ? <VocabSegments text={t2.mainQuestion} renderText={sanitizeHtml} renderVocab={sanitizedRenderRichInline} />
-                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripVocabTags(t2.mainQuestion)) }} />}
+                : <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(stripGrammarTags(stripVocabTags(t2.mainQuestion))) }} />}
             </div>
           );
         }

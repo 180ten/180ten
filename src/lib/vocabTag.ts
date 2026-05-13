@@ -1,13 +1,21 @@
 "use client";
 // src/lib/vocabTag.ts
-// Vocab tag 【...】 in passages/main-question text. Three-layer cache:
+// Vocab tag 〖...〗 (new) or 【...】 (legacy) in passages/main-question text.
+// All four functions below accept either pair so existing DB content keeps
+// working while admins migrate to the new bracket. Three-layer cache:
 //   1. session Map (in-memory, lives until full reload)
 //   2. localStorage (7-day TTL, survives reloads)
 //   3. Supabase fetch (single-row, deduped by `inflight`)
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// Backward-compatible bracket pair: `〖` (U+3016) or `【` (U+3010) opens,
+// `〗` (U+3017) or `】` (U+3011) closes. The character class form means a
+// single regex matches either pair (and even the cross-mismatched `【…〗`
+// — harmless edge case the parser tolerates).
+const VOCAB_TAG_RE = /[〖【]([^〗】]+)[〗】]/g;
+
 // ── Tag parsing ──────────────────────────────────────────────────────────
-// `inner` is whatever sits between 【...】. The DISPLAY value is always
+// `inner` is whatever sits between the brackets. The DISPLAY value is always
 // kept verbatim by callers (extractVocabSegments puts it in seg.display).
 // The LOOKUP word, however, must match vocabulary_library.word — so we
 // peel one layer of common wrapping that admins use as visual emphasis:
@@ -35,7 +43,7 @@ function extractWordFromTag(inner: string): string {
 
 export function extractTaggedWords(text: string): string[] {
   if (!text) return [];
-  return [...text.matchAll(/【([^】]+)】/g)].map((m) => extractWordFromTag(m[1]));
+  return [...text.matchAll(VOCAB_TAG_RE)].map((m) => extractWordFromTag(m[1]));
 }
 
 function escapeAttr(s: string): string {
@@ -50,7 +58,7 @@ function escapeAttr(s: string): string {
 // data-word) instead of this string-builder. Kept for backwards compat.
 export function renderVocabTags(text: string): string {
   if (!text) return "";
-  return text.replace(/【([^】]+)】/g, (_, inner) => {
+  return text.replace(VOCAB_TAG_RE, (_, inner) => {
     const word = extractWordFromTag(inner);
     return `<span class="vocab-tag" data-word="${escapeAttr(word)}">${inner}</span>`;
   });
@@ -68,7 +76,7 @@ export function extractVocabSegments(text: string): VocabSegment[] {
   if (!text) return [];
   const segments: VocabSegment[] = [];
   let last = 0;
-  for (const m of text.matchAll(/【([^】]+)】/g)) {
+  for (const m of text.matchAll(VOCAB_TAG_RE)) {
     const idx = m.index ?? 0;
     if (idx > last) segments.push({ type: "text", value: text.slice(last, idx) });
     const word = extractWordFromTag(m[1]);
@@ -81,12 +89,13 @@ export function extractVocabSegments(text: string): VocabSegment[] {
   return segments;
 }
 
-// Strip 【】 brackets entirely, keeping the inner content verbatim. Used in
-// exam mode (pre-submit) so students see plain text — no markup, no styling.
-// Inner is kept untouched so {(A)(B)} furigana still renders downstream.
+// Strip vocab brackets entirely, keeping the inner content verbatim. Used
+// in exam mode (pre-submit) so students see plain text — no markup, no
+// styling. Inner is kept untouched so {(A)(B)} furigana still renders
+// downstream.
 export function stripVocabTags(text: string): string {
   if (!text) return text;
-  return text.replace(/【([^】]+)】/g, "$1");
+  return text.replace(VOCAB_TAG_RE, "$1");
 }
 
 // ── 3-layer cache ────────────────────────────────────────────────────────

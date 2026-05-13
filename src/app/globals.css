@@ -913,6 +913,18 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag{cursor:pointer;border-radius:3px;transition:background .12s;}
 .vocab-tag:hover{background:rgba(0,0,0,.06);}
 .vocab-tag:active{background:rgba(0,0,0,.10);}
+/* Grammar marker (〔...〕) — visual highlight only, no popup yet. Distinct
+   blue tone keeps it from being confused with the vocab tag's neutral
+   hover. */
+.grammar-tag{color:#0ea5e9;text-decoration:underline;text-decoration-style:dotted;font-weight:500;border-radius:3px;transition:background .12s;}
+.grammar-tag:hover{background:rgba(14,165,233,.08);}
+
+/* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
+.compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
+.compose-tag-btn.vocab{border-color:#f97316;color:#f97316;background:#fff8f5;}
+.compose-tag-btn.vocab:hover{background:#fff1e0;}
+.compose-tag-btn.grammar{border-color:#0ea5e9;color:#0ea5e9;background:#f0f9ff;}
+.compose-tag-btn.grammar:hover{background:#e0f2fe;}
 /* In review mode the parent .choice-btn carries pointer-events:none
    so users can't reselect the answer — but that also blocks the
    vocab-tag inside. Re-enable pointer-events on the tag itself so

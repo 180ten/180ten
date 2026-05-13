@@ -135,14 +135,20 @@ function getComposeTemplate(typeId: string, level: string) {
 }
 
 // ─── SHARED UI PRIMITIVES ────────────────────────────────────────
-// Insert 【】 at the current caret position of an Inp/Ta element and place the
-// caret between the two brackets. Uses the native value setter so React's
-// controlled <input>/<textarea> still picks up the change via its own onChange.
-function insertBrackets(el: HTMLInputElement | HTMLTextAreaElement | null) {
+// Wrap the current selection in `open`/`close`. If there is no selection,
+// inserts an empty pair and parks the caret between them. Uses the native
+// value setter so React's controlled <input>/<textarea> still picks up
+// the change via its own onChange.
+function wrapSelection(
+  el: HTMLInputElement | HTMLTextAreaElement | null,
+  open: string,
+  close: string,
+) {
   if (!el) return;
   const start = el.selectionStart ?? el.value.length;
   const end   = el.selectionEnd   ?? el.value.length;
-  const newVal = el.value.slice(0, start) + "【】" + el.value.slice(end);
+  const selected = el.value.slice(start, end);
+  const newVal = el.value.slice(0, start) + open + selected + close + el.value.slice(end);
   const proto = el instanceof HTMLTextAreaElement
     ? window.HTMLTextAreaElement.prototype
     : window.HTMLInputElement.prototype;
@@ -151,8 +157,16 @@ function insertBrackets(el: HTMLInputElement | HTMLTextAreaElement | null) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
   requestAnimationFrame(() => {
     el.focus();
-    el.selectionStart = start + 1;
-    el.selectionEnd   = start + 1;
+    if (selected) {
+      // Keep the user's selection inside the new wrapping.
+      el.selectionStart = start + open.length;
+      el.selectionEnd   = end + open.length;
+    } else {
+      // Empty pair → park caret between brackets.
+      const caret = start + open.length;
+      el.selectionStart = caret;
+      el.selectionEnd   = caret;
+    }
   });
 }
 function BracketBtn({ targetRef, style }: {
@@ -160,16 +174,26 @@ function BracketBtn({ targetRef, style }: {
   style?: React.CSSProperties;
 }) {
   return (
-    <button
-      type="button"
-      className="insert-bracket-btn"
-      title="Chèn 【】 (đánh dấu từ vựng cho review)"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => insertBrackets(targetRef.current)}
-      style={style}
-    >
-      【】
-    </button>
+    <span style={{ display: "inline-flex", gap: 4, ...style }}>
+      <button
+        type="button"
+        className="compose-tag-btn vocab"
+        title="Tag từ vựng 〖〗 (bôi đen text rồi bấm để bọc; không bôi đen sẽ chèn ngoặc rỗng)"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => wrapSelection(targetRef.current, "〖", "〗")}
+      >
+        〖〗
+      </button>
+      <button
+        type="button"
+        className="compose-tag-btn grammar"
+        title="Tag ngữ pháp 〔〕 (bôi đen text rồi bấm để bọc; không bôi đen sẽ chèn ngoặc rỗng)"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => wrapSelection(targetRef.current, "〔", "〕")}
+      >
+        〔〕
+      </button>
+    </span>
   );
 }
 function Inp({ value, onChange, placeholder, style, noBracketBtn }: {
@@ -292,7 +316,8 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           ["U̲","Gạch chân",["__","__"]],
           ["⇥","Thụt đầu",["　　",""]],
           ["縦","Viết dọc từ trên xuống dưới",["[縦]","[/縦]"]],
-          ["【】","Đánh dấu từ vựng (review)",["【","】"]],
+          ["〖〗","Đánh dấu từ vựng (review) — bôi đen text rồi bấm để bọc",["〖","〗"]],
+          ["〔〕","Đánh dấu ngữ pháp (review) — bôi đen text rồi bấm để bọc",["〔","〕"]],
         ] as [string,string,[string,string]][]).map(([l,t,w]) => toolBtn(l, t, () => insert(w[0], w[1])))}
         {([
           ["左", "Căn trái", "left"],
@@ -340,9 +365,10 @@ function Fl({ label, hint, children, mb = 16 }: {
 function VocabTagHint() {
   return (
     <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fff7f1", border: "1px solid #fde0d3", borderLeft: "3px solid #f26419", borderRadius: 8, fontSize: 11, lineHeight: 1.65, color: "#1a1917" }}>
-      <div style={{ fontWeight: 700, color: "#f26419", marginBottom: 2 }}>💡 Dùng 【từ】 để đánh dấu từ vựng quan trọng</div>
-      <div>Ví dụ: 【私】は【会社員】です</div>
-      <div>Có furigana: 【{`{(合格)(ごうかく)}`}】</div>
+      <div style={{ fontWeight: 700, color: "#f26419", marginBottom: 2 }}>💡 Dùng 〖từ〗 để đánh dấu từ vựng, 〔ngữ pháp〕 để đánh dấu mẫu ngữ pháp</div>
+      <div>Ví dụ: 〖私〗は〖会社員〗です — 〔ています〕</div>
+      <div>Có furigana: 〖{`{(合格)(ごうかく)}`}〗</div>
+      <div style={{ marginTop: 4, color: "#a16438", fontSize: 10 }}>※ Dữ liệu cũ dùng 【】 vẫn hoạt động bình thường (backward compat).</div>
     </div>
   );
 }
@@ -800,7 +826,7 @@ function BunshoForm({ data, onChange, level }: { data: QData; onChange: (d: QDat
         <Fl label="Số x (bắt đầu)" mb={0}><Inp value={String(data.x||"")} onChange={v => u("x",v)} placeholder="46" noBracketBtn /></Fl>
         <Fl label="Số y (kết thúc)" mb={0}><Inp value={String(data.y||"")} onChange={v => u("y",v)} placeholder="50" noBracketBtn /></Fl>
       </div>
-      <Fl label="Đoạn văn" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 【từ】">
+      <Fl label="Đoạn văn" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 〖từ〗 / 〔mẫu〕">
         <RichTa value={String(data.passage||"")} onChange={v => u("passage",v)} placeholder="Nội dung đoạn văn..." rows={7} />
       </Fl>
       <VocabTagHint />
@@ -808,7 +834,7 @@ function BunshoForm({ data, onChange, level }: { data: QData; onChange: (d: QDat
         <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 6 }}>Preview đoạn văn</div>
         {rRich(String(data.passage||""))}
       </div>
-      <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 【từ】">
+      <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 thụt đầu / [縦][/縦] / 〖từ〗 / 〔mẫu〕">
         <RichTa
           value={String((data.vi_translation as string[])?.[0] || "")}
           onChange={v => {
@@ -870,14 +896,14 @@ function ReadingBase({ data, onChange, qPerPassage, multiPassage, typeId, level 
             <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>{multiPassage ? `Đoạn văn ${pi+1}` : "Đoạn văn"}</span>
             {multiPassage && passages.length > 1 && <button type="button" onClick={() => rmP(pi)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
-          <Fl label="Nội dung" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 【từ】">
+          <Fl label="Nội dung" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 〖từ〗 / 〔mẫu〕">
             <RichTa value={p.text||""} onChange={v => uP(pi,"text",v)} rows={6} placeholder="Paste đoạn văn..." />
           </Fl>
           <VocabTagHint />
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, background: C.surface }}>
             <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 4 }}>Preview</div>{rRich(p.text||"")}
           </div>
-          <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 【từ】">
+          <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 〖từ〗 / 〔mẫu〕">
             <RichTa
               value={String((data.vi_translation as string[])?.[pi] || "")}
               onChange={v => {
@@ -933,7 +959,7 @@ function TogoForm({ data, onChange, level }: { data: QData; onChange: (d: QData)
             <div style={{ fontSize: 11, color: C.blue, fontWeight: 700, marginBottom: 4 }}>Preview</div>
             {rRich(passages[pi]||"")}
           </div>
-          <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 【từ】">
+          <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / 　　 / [縦][/縦] / 〖từ〗 / 〔mẫu〕">
             <RichTa
               value={String((data.vi_translation as string[])?.[pi] || "")}
               onChange={v => {
@@ -1189,7 +1215,7 @@ function BjtPassageMcForm({ typeId, data, onChange }: {
       <Fl label="Đoạn văn（段落）" hint="B / I / U / căn lề / size / thụt dòng / 縦">
         <RichTa value={String(data.passage||"")} onChange={v=>u("passage",v)} rows={10} placeholder="**太字** *斜体* __下線__ 　　インデント&#10;[縦]縦の文[/縦]" />
       </Fl>
-      <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / thụt dòng / 縦 / 【từ】">
+      <Fl label="Bản dịch tiếng Việt" hint="B / I / U / căn lề / size / thụt dòng / 縦 / 〖từ〗 / 〔mẫu〕">
         <RichTa
           value={String((data.vi_translation as string[])?.[0] || "")}
           onChange={v => {
