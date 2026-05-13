@@ -150,6 +150,13 @@ export default function MockTestTab({
   // Review-mode sidebar tab — only meaningful after submit. Lets the user
   // browse the QGrid by 読解 / 聴解 instead of one big mixed list.
   const [reviewTab, setReviewTab] = useState<"dokkai" | "choukai">("dokkai");
+  // Collapsible sidebar. Desktop (≥980 px) defaults open; below that the
+  // existing CSS hid the sidebar entirely — now it slides in as an
+  // overlay when the user taps the toggle.
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.innerWidth > 980;
+  });
   const PAGE_SIZE = 9;
 
   function handleStartTarget(cfg: TargetConfig) {
@@ -546,7 +553,7 @@ export default function MockTestTab({
           </div>
         </div>
 
-        <div className={`exam-body${examState === "ready" ? " ready-mode" : ""}`}>
+        <div className={`exam-body${examState === "ready" ? " ready-mode" : ""}${examState !== "ready" && !sidebarOpen ? " sidebar-collapsed" : ""}`}>
           <div className={`exam-content${examState === "ready" ? " ready-mode" : ""}`} id="ev-content" ref={examContentRef}>
             {examState === "ready" && currentExam && (
               <div className="exam-ready-screen">
@@ -642,7 +649,28 @@ export default function MockTestTab({
               ? (reviewTab === "dokkai" ? "read" : "listen")
               : examPhase;
             return (
-            <div className="exam-sidebar" id="ev-sidebar" ref={examSidebarRef}>
+            <>
+            {/* Mobile overlay — shown only when sidebar is open on small
+                screens (CSS-gated). Tap to close. */}
+            <div
+              className={`sidebar-overlay${sidebarOpen ? " visible" : ""}`}
+              onClick={() => setSidebarOpen(false)}
+              aria-hidden
+            />
+            {/* Toggle handle — fixed to viewport right; tracks the
+                sidebar's left edge when open, sits flush right when
+                closed. */}
+            <button
+              type="button"
+              className={`sidebar-toggle-btn${sidebarOpen ? " open" : " closed"}`}
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? "Thu sidebar" : "Mở sidebar"}
+              aria-label={sidebarOpen ? "Thu sidebar" : "Mở sidebar"}
+              aria-pressed={sidebarOpen}
+            >
+              {sidebarOpen ? "›" : "‹"}
+            </button>
+            <div className={`exam-sidebar${sidebarOpen ? "" : " sidebar-hidden"}`} id="ev-sidebar" ref={examSidebarRef}>
               <div className="sidebar-card" id="ev-nav-section">
                 <div className="sidebar-title">Câu hỏi</div>
                 {inReview && (
@@ -690,6 +718,7 @@ export default function MockTestTab({
                 </div>
               </div>
             </div>
+            </>
             );
           })()}
         </div>
