@@ -449,7 +449,15 @@ function VocabTagPopup({
             <div className="cp-footer">
               {hasMore ? (
                 <button type="button" className="cp-expand-btn" onClick={() => setExpanded((v) => !v)}>
-                  {expanded ? "Rút gọn" : "Xem thêm"} <span aria-hidden>{expanded ? "∧" : "∨"}</span>
+                  {expanded ? "Rút gọn" : "Xem thêm"}
+                  <img
+                    src="/svg/angle-down.svg"
+                    alt=""
+                    aria-hidden
+                    width={11}
+                    height={11}
+                    style={{ transition: "transform .15s", transform: expanded ? "rotate(180deg)" : "none" }}
+                  />
                 </button>
               ) : <span aria-hidden />}
               {onAddToAnki ? (

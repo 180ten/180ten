@@ -946,7 +946,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 /* ── Vocab tag popup: card layout per mockup ──────────────────────────── */
 /* No `.chip-popup` shared styles — this popup carries its own background,
    padding, shadow, and width constraints. Position/left/top set inline. */
-.vocab-tag-popup{background:#fff;border-radius:14px;padding:12px 14px;min-width:200px;max-width:240px;max-height:calc(100vh - 24px);overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.15);color:#1a1a2e;}
+.vocab-tag-popup{background:#fff;border-radius:14px;border-top:3px solid #f97316;padding:12px 14px;min-width:200px;max-width:240px;max-height:calc(100vh - 24px);overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.15);color:#1a1a2e;}
 .vocab-tag-popup .cp-close{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:#f0f0f0;border:none;cursor:pointer;font-size:11px;color:#888;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}
 .vocab-tag-popup .cp-close:hover{background:#e5e5e5;color:#555;}
 .vocab-tag-popup .cp-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:28px;}
@@ -975,8 +975,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 /* Grammar variant — sky-blue palette so it's clearly distinct from
    the orange vocab popup. Triggered by kind="grammar" in
    VocabTagPopup, which adds the .grammar-popup modifier. */
-.vocab-tag-popup.grammar-popup{border-top:3px solid #0ea5e9;}
-.vocab-tag-popup.grammar-popup .cp-word{color:#0284c7;}
+.vocab-tag-popup.grammar-popup{border-top-color:#0ea5e9;}
+/* Grammar popup keeps the word in default black for readability;
+   only the surrounding accents go blue. */
 .vocab-tag-popup.grammar-popup .cp-type-badge{background:#e0f2fe;color:#0284c7;}
 .vocab-tag-popup.grammar-popup .cp-short{border-left-color:#0ea5e9;}
 .vocab-tag-popup.grammar-popup .cp-expand-btn{color:#0284c7;}
