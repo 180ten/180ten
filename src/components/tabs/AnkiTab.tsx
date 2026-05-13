@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useDictLang } from "@/components/modals/SettingsModal";
 
 export interface AnkiCard {
   id: string;
@@ -241,7 +242,11 @@ const ROWS_PREVIEW = 2;
 
 const CardBack = forwardRef<CardBackHandle, { card: AnkiCard }>(function CardBack({ card }, ref) {
   const [showEx,     setShowEx]     = useState(false);
-  const [showJp,     setShowJp]     = useState(false);
+  // Per-card JP/VI toggle was removed — language now follows the global
+  // dictionary setting (Settings modal → Ngôn ngữ từ điển). showJp is
+  // derived; no local state, no per-card button.
+  const dictLang = useDictLang();
+  const showJp = dictLang === "jp-jp";
   const [showMoreVi, setShowMoreVi] = useState(false);
   const [showMoreJp, setShowMoreJp] = useState(false);
 
@@ -270,11 +275,6 @@ const CardBack = forwardRef<CardBackHandle, { card: AnkiCard }>(function CardBac
   function stopAndToggleEx(e: React.MouseEvent) {
     e.stopPropagation();
     setShowEx((s) => !s);
-  }
-
-  function stopAndToggleJp(e: React.MouseEvent) {
-    e.stopPropagation();
-    setShowJp((s) => !s);
   }
 
   const activePanelRows = showJp && hasJp ? jpRows : viRows;
@@ -315,17 +315,6 @@ const CardBack = forwardRef<CardBackHandle, { card: AnkiCard }>(function CardBac
                 <Image src="/svg/mean.svg" alt="" aria-hidden width={14} height={14} />
               </span>
               <span className="acb-block-title"><Furi>{headerMeaning || (card.meaning ?? "")}</Furi></span>
-              {hasJp && (
-                <button
-                  type="button"
-                  className="acb-jp-toggle"
-                  title="Đổi nghĩa Việt / Nhật"
-                  onClick={stopAndToggleJp}
-                  aria-label="Đổi nghĩa Việt / Nhật"
-                >
-                  <Image src="/svg/8933942.svg" alt="" aria-hidden width={12} height={12} />
-                </button>
-              )}
             </div>
             {visibleRows.length > 0 && (
               <div className="acb-block-divider" />
