@@ -930,7 +930,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
    vocab-tag inside. Re-enable pointer-events on the tag itself so
    the popup click still lands. cursor stays explicit since the
    button's cursor:default would otherwise inherit. */
-.exam-submitted .choice-btn .vocab-tag{pointer-events:auto;cursor:pointer;}
+.exam-submitted .choice-btn .vocab-tag,
+.exam-submitted .choice-btn .grammar-tag{pointer-events:auto;cursor:pointer;}
 
 /* ── Auto-vocab pills (review mode, derived from 【】 in passage/question) ── */
 .av-pill-wrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;}

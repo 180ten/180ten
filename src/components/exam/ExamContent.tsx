@@ -14,7 +14,7 @@ import {
   lookupVocab, lookupVocabBulk, prefetchVocab,
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
-import { extractGrammarSegments, stripGrammarTags } from "@/lib/grammarTag";
+import { extractGrammarSegments, stripGrammarTags, lookupGrammar, prefetchGrammar } from "@/lib/grammarTag";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -49,7 +49,7 @@ function VocabSegments({
     if (inner.length === 0) return null;
     return inner.map((part, j) =>
       part.type === "grammar"
-        ? <span key={`${baseKey}-g-${j}`} className="grammar-tag"
+        ? <span key={`${baseKey}-g-${j}`} className="grammar-tag" data-grammar={part.content}
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.content)) }} />
         : <span key={`${baseKey}-t-${j}`}
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.value)) }} />
@@ -317,10 +317,13 @@ interface AnchorRect {
 }
 
 function VocabTagPopup({
-  word, anchor, onClose, onAddToAnki,
+  word, anchor, kind = "vocab", onClose, onAddToAnki,
 }: {
   word: string;
   anchor: AnchorRect;
+  /** Which library to fetch from. "grammar" → grammar_library via
+   *  lookupGrammar (mapped to VocabEntry shape); default vocab. */
+  kind?: "vocab" | "grammar";
   onClose: () => void;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
 }) {
@@ -344,9 +347,10 @@ function VocabTagPopup({
     setEntry(undefined);
     setAddState("idle");
     setExpanded(false);
-    void lookupVocab(word, sb).then((e) => { if (!cancelled) setEntry(e); });
+    const fetcher = kind === "grammar" ? lookupGrammar(word, sb) : lookupVocab(word, sb);
+    void fetcher.then((e) => { if (!cancelled) setEntry(e); });
     return () => { cancelled = true; };
-  }, [word]);
+  }, [word, kind]);
 
   // Position clamp — runs whenever the anchor changes OR the popup
   // body grows (entry just loaded, "Xem thêm" expanded). Uses the real
@@ -1269,6 +1273,7 @@ export default function ExamContent({
   // (touch-only devices) skips hover and goes click-direct.
   const [vocabPopup, setVocabPopup] = useState<{
     word: string;
+    kind: "vocab" | "grammar";
     anchor: AnchorRect;
     key: number;
   } | null>(null);
@@ -1279,41 +1284,44 @@ export default function ExamContent({
 
     const onClick = (e: MouseEvent) => {
       // Use composedPath so that clicks inside a <button> still surface
-      // the inner <span class="vocab-tag" data-word="..."> as the
-      // matched element — some browsers report e.target as the button
-      // when the click lands on a child of an interactive ancestor.
+      // the inner tag span as the matched element — some browsers report
+      // e.target as the button when the click lands on a child of an
+      // interactive ancestor.
       const path = (typeof e.composedPath === "function" ? e.composedPath() : []) as EventTarget[];
       const nodes: HTMLElement[] = (path.length > 0 ? path : [])
         .filter((n): n is HTMLElement => n instanceof HTMLElement);
-      // Fall back to e.target if composedPath isn't available.
       if (nodes.length === 0 && e.target instanceof HTMLElement) {
         let n: HTMLElement | null = e.target;
         while (n) { nodes.push(n); n = n.parentElement; }
       }
       // Click inside the popup itself → ignore (popup handles its own clicks)
       if (nodes.some((n) => n.classList?.contains("vocab-tag-popup"))) return;
-      const tag = nodes.find((n) => n.dataset?.word);
+
+      // Look for either a vocab tag (data-word) or a grammar tag
+      // (data-grammar) along the path. data-word wins if both somehow
+      // appear on the same chain (vocab is the more common case).
+      const tag = nodes.find((n) => n.dataset?.word || n.dataset?.grammar);
       if (!tag) { setVocabPopup(null); return; }
-      const word = tag.dataset.word || "";
+      const isGrammar = !tag.dataset.word && !!tag.dataset.grammar;
+      const word = (isGrammar ? tag.dataset.grammar : tag.dataset.word) || "";
       if (!word) return;
 
-      // Capture the word's rect — viewport-relative coords for the
-      // fixed-positioned popup. VocabTagPopup itself does the clamp
-      // using its real rendered size, so no pre-clamp here.
       const r = tag.getBoundingClientRect();
       const anchor: AnchorRect = {
         top: r.top, left: r.left, bottom: r.bottom, right: r.right,
         width: r.width, height: r.height,
       };
-      setVocabPopup({ word, anchor, key: Date.now() });
+      setVocabPopup({ word, kind: isGrammar ? "grammar" : "vocab", anchor, key: Date.now() });
     };
 
     const onMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      const tag = target?.closest?.("[data-word]") as HTMLElement | null;
+      const tag = target?.closest?.("[data-word],[data-grammar]") as HTMLElement | null;
       if (!tag) return;
-      const word = tag.getAttribute("data-word") || "";
-      if (word) prefetchVocab(word, sb);
+      const w = tag.getAttribute("data-word");
+      if (w) { prefetchVocab(w, sb); return; }
+      const g = tag.getAttribute("data-grammar");
+      if (g) prefetchGrammar(g, sb);
     };
 
     document.addEventListener("click", onClick);
@@ -1338,6 +1346,7 @@ export default function ExamContent({
       key={vocabPopup.key}
       word={vocabPopup.word}
       anchor={vocabPopup.anchor}
+      kind={vocabPopup.kind}
       onClose={() => setVocabPopup(null)}
       onAddToAnki={onAddToAnki}
     />
