@@ -293,12 +293,20 @@ function AutoVocabBox({
 // getBoundingClientRect (viewport coords) — never adds scrollX/scrollY since
 // position:fixed is viewport-relative, not document-relative.
 
+interface AnchorRect {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+  width: number;
+  height: number;
+}
+
 function VocabTagPopup({
-  word, popupStyle, showAbove, onClose, onAddToAnki,
+  word, anchor, onClose, onAddToAnki,
 }: {
   word: string;
-  popupStyle: React.CSSProperties;
-  showAbove: boolean;
+  anchor: AnchorRect;
   onClose: () => void;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
 }) {
@@ -306,6 +314,16 @@ function VocabTagPopup({
   const [addState, setAddState] = useState<"idle" | "loading" | "done">("idle");
   const [expanded, setExpanded] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // Initial style — render right below the tapped word, no pre-clamping
+  // based on a height estimate. The post-mount effect re-measures the
+  // real popup size and adjusts if it actually overflows.
+  const initialStyle: React.CSSProperties = {
+    position: "fixed",
+    top:  anchor.bottom + 8,
+    left: anchor.left,
+    zIndex: 9999,
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -316,25 +334,36 @@ function VocabTagPopup({
     return () => { cancelled = true; };
   }, [word]);
 
-  // Re-clamp the popup vertically whenever its content height changes
-  // (entry just loaded, or user toggled "Xem thêm"). The parent's
-  // initial position used a 320-px estimate; the expanded body can run
-  // taller and spill below the viewport. Adjusts inline top in place
-  // — no React state churn, no layout flash.
+  // Position clamp — runs whenever the anchor changes OR the popup
+  // body grows (entry just loaded, "Xem thêm" expanded). Uses the real
+  // rendered rect, not estimates.
+  //   • Horizontal: keep popup fully inside the viewport.
+  //   • Vertical: if popup overflows below, flip it above the anchor
+  //     (anchor.bottom + 8 - height - 16 = anchor.top - height - 8).
+  //     If even the flipped position is off-screen, snap to PADDING.
   useEffect(() => {
     const el = popupRef.current;
     if (!el) return;
     const PADDING = 12;
     const rect = el.getBoundingClientRect();
 
-    if (rect.bottom > window.innerHeight - PADDING) {
-      const overflow = rect.bottom - (window.innerHeight - PADDING);
-      const currentTop = parseFloat(el.style.top) || rect.top;
-      el.style.top = `${Math.max(PADDING, currentTop - overflow)}px`;
-    } else if (rect.top < PADDING) {
-      el.style.top = `${PADDING}px`;
+    // Horizontal
+    let left = anchor.left;
+    if (left + rect.width > window.innerWidth - PADDING) {
+      left = window.innerWidth - rect.width - PADDING;
     }
-  }, [expanded, entry]);
+    if (left < PADDING) left = PADDING;
+    el.style.left = `${left}px`;
+
+    // Vertical
+    let top = anchor.bottom + 8;
+    if (top + rect.height > window.innerHeight - PADDING) {
+      // Flip above the anchor.
+      top = anchor.top - rect.height - 8;
+      if (top < PADDING) top = PADDING;
+    }
+    el.style.top = `${top}px`;
+  }, [anchor, expanded, entry]);
 
   async function handleAdd(e: React.MouseEvent) {
     e.stopPropagation();
@@ -360,8 +389,8 @@ function VocabTagPopup({
   return createPortal(
     <div
       ref={popupRef}
-      className={`vocab-tag-popup ${showAbove ? "above" : "below"}`}
-      style={popupStyle}
+      className="vocab-tag-popup"
+      style={initialStyle}
       onClick={(e) => e.stopPropagation()}
     >
       <button className="cp-close" onClick={onClose} aria-label="Đóng">×</button>
@@ -1226,8 +1255,7 @@ export default function ExamContent({
   // (touch-only devices) skips hover and goes click-direct.
   const [vocabPopup, setVocabPopup] = useState<{
     word: string;
-    popupStyle: React.CSSProperties;
-    showAbove: boolean;
+    anchor: AnchorRect;
     key: number;
   } | null>(null);
 
@@ -1255,57 +1283,15 @@ export default function ExamContent({
       const word = tag.dataset.word || "";
       if (!word) return;
 
-      // Position from getBoundingClientRect (viewport-relative).
-      // position:fixed is viewport-relative, so do NOT add scrollX/scrollY.
-      const rect = tag.getBoundingClientRect();
-      // POPUP_W slightly above CSS max-width (240) to absorb scrollbar +
-      // sub-pixel rounding on mobile zoomed views. POPUP_H is a
-      // conservative estimate for the flip + clamp decision; the popup
-      // body is internally scrollable past this.
-      const POPUP_W = 260;
-      const POPUP_H = 320;
-      const PADDING = 12;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const showAbove = spaceBelow < POPUP_H && rect.top > POPUP_H;
-
-      // Horizontal clamp — keep popup fully inside the viewport.
-      const rawLeft   = rect.left;
-      const maxLeft   = window.innerWidth - POPUP_W - PADDING;
-      const finalLeft = Math.max(PADDING, Math.min(rawLeft, maxLeft));
-
-      // Vertical: anchor right next to the trigger. Don't pre-clamp
-      // against the bottom edge using POPUP_H — that's a 320 px
-      // estimate, but a collapsed popup is often half that, so the
-      // clamp would push it well above the word the user just tapped.
-      // VocabTagPopup's post-mount useEffect re-measures the real
-      // rendered rect and shifts top up if (and only if) the popup
-      // actually overflows.
-      const rawTop = showAbove
-        ? rect.top - POPUP_H - 8
-        : rect.bottom + 8;
-      const finalTop = Math.max(PADDING, rawTop);
-
-      const popupStyle: React.CSSProperties = {
-        position: "fixed",
-        top:  finalTop,
-        left: finalLeft,
-        zIndex: 9999,
+      // Capture the word's rect — viewport-relative coords for the
+      // fixed-positioned popup. VocabTagPopup itself does the clamp
+      // using its real rendered size, so no pre-clamp here.
+      const r = tag.getBoundingClientRect();
+      const anchor: AnchorRect = {
+        top: r.top, left: r.left, bottom: r.bottom, right: r.right,
+        width: r.width, height: r.height,
       };
-
-      // Diagnostic log — share these values if popup positions wrong.
-      // Suspicious values: rect.* all 0 → trigger detached/hidden;
-      //                    final left/top tiny while rect.left/top large → CSS override.
-      console.log("[vocab-popup] click", {
-        word,
-        rect: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right, w: rect.width, h: rect.height },
-        win: { w: window.innerWidth, h: window.innerHeight, scrollY: window.scrollY, scrollX: window.scrollX },
-        showAbove,
-        popupStyle,
-        tagTagName: tag.tagName,
-        tagClass: tag.className,
-      });
-
-      setVocabPopup({ word, popupStyle, showAbove, key: Date.now() });
+      setVocabPopup({ word, anchor, key: Date.now() });
     };
 
     const onMouseOver = (e: MouseEvent) => {
@@ -1337,8 +1323,7 @@ export default function ExamContent({
     <VocabTagPopup
       key={vocabPopup.key}
       word={vocabPopup.word}
-      popupStyle={vocabPopup.popupStyle}
-      showAbove={vocabPopup.showAbove}
+      anchor={vocabPopup.anchor}
       onClose={() => setVocabPopup(null)}
       onAddToAnki={onAddToAnki}
     />
