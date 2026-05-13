@@ -456,7 +456,23 @@ function ChoiceBtn({
         : (
           <>
             <span className="choice-num">{nums[idx] ?? `${idx + 1}`}</span>
-            <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(stripVocabTags(text), qType)) }} />
+            {submitted
+              ? (
+                // Review mode: route through VocabSegments so 【word】 becomes
+                // a clickable vocab-tag (same popup as passages/question
+                // stems). The button's own onClick is no-op when submitted,
+                // so tapping the tag opens the popup without changing the
+                // selection.
+                <span className="choice-label">
+                  <VocabSegments
+                    text={text}
+                    renderText={(s) => sanitizeHtml(renderChoiceText(s, qType))}
+                    renderVocab={(s) => sanitizeHtml(renderChoiceText(s, qType))}
+                  />
+                </span>
+              )
+              : <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(stripVocabTags(text), qType)) }} />
+            }
           </>
         )
       }
