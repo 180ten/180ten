@@ -959,12 +959,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag-popup .cp-anki-btn:hover{background:#fff0e8;}
 .vocab-tag-popup .cp-anki-btn.added{background:#f26419;color:#fff;}
 .vocab-tag-popup .cp-anki-btn:disabled{opacity:.6;cursor:not-allowed;}
-.vocab-tag-popup::before,
-.vocab-tag-popup::after{content:'';position:absolute;left:18px;width:12px;height:12px;background:#fff;border:1px solid rgba(0,0,0,.06);transform:rotate(45deg);}
-.vocab-tag-popup.below::before{top:-7px;border-right-color:transparent;border-bottom-color:transparent;}
-.vocab-tag-popup.above::after{bottom:-7px;border-left-color:transparent;border-top-color:transparent;}
-.vocab-tag-popup.below::after,
-.vocab-tag-popup.above::before{display:none;}
+/* Decorative arrow pointers removed — they were tied to the .above /
+   .below modifier on the popup which the new anchor-rect positioning
+   no longer applies, leaving both pseudo-elements rendered as floating
+   diamonds inside the popup body. */
 
 /* ── 【】 insert button (compose form) ── */
 .insert-bracket-btn{font-size:11px;font-family:'Noto Sans JP',sans-serif;padding:2px 7px;border-radius:5px;border:1px solid #e0d9d0;background:#faf9f7;cursor:pointer;color:#f26419;font-weight:700;transition:background .15s;line-height:1.4;flex:none;}
