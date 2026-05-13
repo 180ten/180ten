@@ -305,6 +305,7 @@ function VocabTagPopup({
   const [entry, setEntry] = useState<VocabEntry | null | undefined>(undefined);
   const [addState, setAddState] = useState<"idle" | "loading" | "done">("idle");
   const [expanded, setExpanded] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +315,26 @@ function VocabTagPopup({
     void lookupVocab(word, sb).then((e) => { if (!cancelled) setEntry(e); });
     return () => { cancelled = true; };
   }, [word]);
+
+  // Re-clamp the popup vertically whenever its content height changes
+  // (entry just loaded, or user toggled "Xem thêm"). The parent's
+  // initial position used a 320-px estimate; the expanded body can run
+  // taller and spill below the viewport. Adjusts inline top in place
+  // — no React state churn, no layout flash.
+  useEffect(() => {
+    const el = popupRef.current;
+    if (!el) return;
+    const PADDING = 12;
+    const rect = el.getBoundingClientRect();
+
+    if (rect.bottom > window.innerHeight - PADDING) {
+      const overflow = rect.bottom - (window.innerHeight - PADDING);
+      const currentTop = parseFloat(el.style.top) || rect.top;
+      el.style.top = `${Math.max(PADDING, currentTop - overflow)}px`;
+    } else if (rect.top < PADDING) {
+      el.style.top = `${PADDING}px`;
+    }
+  }, [expanded, entry]);
 
   async function handleAdd(e: React.MouseEvent) {
     e.stopPropagation();
@@ -338,6 +359,7 @@ function VocabTagPopup({
 
   return createPortal(
     <div
+      ref={popupRef}
       className={`vocab-tag-popup ${showAbove ? "above" : "below"}`}
       style={popupStyle}
       onClick={(e) => e.stopPropagation()}
