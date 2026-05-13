@@ -407,7 +407,7 @@ function VocabTagPopup({
   return createPortal(
     <div
       ref={popupRef}
-      className="vocab-tag-popup"
+      className={`vocab-tag-popup${kind === "grammar" ? " grammar-popup" : ""}`}
       style={initialStyle}
       onClick={(e) => e.stopPropagation()}
     >

@@ -913,11 +913,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag{cursor:pointer;border-radius:3px;transition:background .12s;}
 .vocab-tag:hover{background:rgba(0,0,0,.06);}
 .vocab-tag:active{background:rgba(0,0,0,.10);}
-/* Grammar marker (〔...〕) — visual highlight only, no popup yet. Distinct
-   blue tone keeps it from being confused with the vocab tag's neutral
-   hover. */
-.grammar-tag{color:#0ea5e9;text-decoration:underline;text-decoration-style:dotted;font-weight:500;border-radius:3px;transition:background .12s;}
-.grammar-tag:hover{background:rgba(14,165,233,.08);}
+/* Grammar marker (〔...〕) — looks like plain text by default; only a
+   subtle blue hover background hints that the popup is available. */
+.grammar-tag{color:inherit;text-decoration:none;font-weight:inherit;cursor:pointer;border-radius:3px;transition:background .12s;}
+.grammar-tag:hover{background:#e0f2fe;}
 
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
@@ -972,6 +971,18 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag-popup .cp-anki-btn:hover{background:#fff0e8;}
 .vocab-tag-popup .cp-anki-btn.added{background:#f26419;color:#fff;}
 .vocab-tag-popup .cp-anki-btn:disabled{opacity:.6;cursor:not-allowed;}
+
+/* Grammar variant — sky-blue palette so it's clearly distinct from
+   the orange vocab popup. Triggered by kind="grammar" in
+   VocabTagPopup, which adds the .grammar-popup modifier. */
+.vocab-tag-popup.grammar-popup{border-top:3px solid #0ea5e9;}
+.vocab-tag-popup.grammar-popup .cp-word{color:#0284c7;}
+.vocab-tag-popup.grammar-popup .cp-type-badge{background:#e0f2fe;color:#0284c7;}
+.vocab-tag-popup.grammar-popup .cp-short{border-left-color:#0ea5e9;}
+.vocab-tag-popup.grammar-popup .cp-expand-btn{color:#0284c7;}
+.vocab-tag-popup.grammar-popup .cp-anki-btn{border-color:#0ea5e9;color:#0284c7;}
+.vocab-tag-popup.grammar-popup .cp-anki-btn:hover{background:#e0f2fe;}
+.vocab-tag-popup.grammar-popup .cp-anki-btn.added{background:#0ea5e9;color:#fff;}
 /* Decorative arrow pointers removed — they were tied to the .above /
    .below modifier on the popup which the new anchor-rect positioning
    no longer applies, leaving both pseudo-elements rendered as floating
