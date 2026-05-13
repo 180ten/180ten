@@ -1273,13 +1273,17 @@ export default function ExamContent({
       const maxLeft   = window.innerWidth - POPUP_W - PADDING;
       const finalLeft = Math.max(PADDING, Math.min(rawLeft, maxLeft));
 
-      // Vertical: anchor above or below the trigger first, then clamp
-      // top so the popup never overruns the viewport edges.
+      // Vertical: anchor right next to the trigger. Don't pre-clamp
+      // against the bottom edge using POPUP_H — that's a 320 px
+      // estimate, but a collapsed popup is often half that, so the
+      // clamp would push it well above the word the user just tapped.
+      // VocabTagPopup's post-mount useEffect re-measures the real
+      // rendered rect and shifts top up if (and only if) the popup
+      // actually overflows.
       const rawTop = showAbove
         ? rect.top - POPUP_H - 8
         : rect.bottom + 8;
-      const maxTop   = window.innerHeight - POPUP_H - PADDING;
-      const finalTop = Math.max(PADDING, Math.min(rawTop, maxTop));
+      const finalTop = Math.max(PADDING, rawTop);
 
       const popupStyle: React.CSSProperties = {
         position: "fixed",
