@@ -147,6 +147,9 @@ export default function MockTestTab({
   const [viewMode, setViewMode]     = useState<"grid" | "list">("grid");
   const [page, setPage]             = useState(1);
   const [targetOpen, setTargetOpen] = useState(false);
+  // Review-mode sidebar tab — only meaningful after submit. Lets the user
+  // browse the QGrid by 読解 / 聴解 instead of one big mixed list.
+  const [reviewTab, setReviewTab] = useState<"dokkai" | "choukai">("dokkai");
   const PAGE_SIZE = 9;
 
   function handleStartTarget(cfg: TargetConfig) {
@@ -630,12 +633,40 @@ export default function MockTestTab({
               />
             )}
           </div>
-          {examState !== "ready" && (
+          {examState !== "ready" && (() => {
+            const inReview = submitted && examState === "result";
+            // Override phase only in review mode — clicking a sidebar tab
+            // filters QGrid by 読解 / 聴解. During an actual exam phase,
+            // examPhase still drives the grid.
+            const effectivePhase = inReview
+              ? (reviewTab === "dokkai" ? "read" : "listen")
+              : examPhase;
+            return (
             <div className="exam-sidebar" id="ev-sidebar" ref={examSidebarRef}>
               <div className="sidebar-card" id="ev-nav-section">
                 <div className="sidebar-title">Câu hỏi</div>
+                {inReview && (
+                  <div className="review-tab-switcher">
+                    <button
+                      type="button"
+                      className={`review-tab-btn${reviewTab === "dokkai" ? " active" : ""}`}
+                      onClick={() => {
+                        setReviewTab("dokkai");
+                        document.getElementById("ev-qgrid")?.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                    >📖 読解</button>
+                    <button
+                      type="button"
+                      className={`review-tab-btn${reviewTab === "choukai" ? " active" : ""}`}
+                      onClick={() => {
+                        setReviewTab("choukai");
+                        document.getElementById("ev-qgrid")?.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                    >🎧 聴解</button>
+                  </div>
+                )}
                 <div className="q-grid" id="ev-qgrid">
-                  <QGrid answerKey={answerKey} keyTypeMap={keyTypeMap} answers={answers} submitted={submitted && examState === "result"} phase={examPhase} />
+                  <QGrid answerKey={answerKey} keyTypeMap={keyTypeMap} answers={answers} submitted={inReview} phase={effectivePhase} />
                 </div>
               </div>
               {examState === "doing" && (
@@ -659,7 +690,8 @@ export default function MockTestTab({
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
