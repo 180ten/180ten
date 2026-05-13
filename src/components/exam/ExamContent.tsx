@@ -1235,13 +1235,23 @@ export default function ExamContent({
     const isTouch = typeof window !== "undefined" && ("ontouchstart" in window || (navigator as { maxTouchPoints?: number }).maxTouchPoints! > 0);
 
     const onClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
+      // Use composedPath so that clicks inside a <button> still surface
+      // the inner <span class="vocab-tag" data-word="..."> as the
+      // matched element — some browsers report e.target as the button
+      // when the click lands on a child of an interactive ancestor.
+      const path = (typeof e.composedPath === "function" ? e.composedPath() : []) as EventTarget[];
+      const nodes: HTMLElement[] = (path.length > 0 ? path : [])
+        .filter((n): n is HTMLElement => n instanceof HTMLElement);
+      // Fall back to e.target if composedPath isn't available.
+      if (nodes.length === 0 && e.target instanceof HTMLElement) {
+        let n: HTMLElement | null = e.target;
+        while (n) { nodes.push(n); n = n.parentElement; }
+      }
       // Click inside the popup itself → ignore (popup handles its own clicks)
-      if (target.closest?.(".vocab-tag-popup")) return;
-      const tag = target.closest?.("[data-word]") as HTMLElement | null;
+      if (nodes.some((n) => n.classList?.contains("vocab-tag-popup"))) return;
+      const tag = nodes.find((n) => n.dataset?.word);
       if (!tag) { setVocabPopup(null); return; }
-      const word = tag.getAttribute("data-word") || "";
+      const word = tag.dataset.word || "";
       if (!word) return;
 
       // Position from getBoundingClientRect (viewport-relative).

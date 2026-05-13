@@ -913,6 +913,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .vocab-tag{cursor:pointer;border-radius:3px;transition:background .12s;}
 .vocab-tag:hover{background:rgba(0,0,0,.06);}
 .vocab-tag:active{background:rgba(0,0,0,.10);}
+/* Vocab tags inside a choice button need a stronger visual hint —
+   the parent button is the dominant click target so users miss the
+   inline tag without it. Dotted underline + light tint reads as
+   "click me" and matches the existing accent palette. */
+.choice-btn .vocab-tag{background:rgba(232,80,42,.10);border-bottom:1px dotted rgba(232,80,42,.55);padding:0 2px;}
+.choice-btn .vocab-tag:hover{background:rgba(232,80,42,.20);}
+.choice-btn .vocab-tag:active{background:rgba(232,80,42,.30);}
 
 /* ── Auto-vocab pills (review mode, derived from 【】 in passage/question) ── */
 .av-pill-wrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;}
