@@ -1357,15 +1357,29 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
     return raw.length > 40 ? raw.slice(0, 40) + "…" : (raw || "(trống)");
   }
 
-  function DragCard({ qId, fromGroupId, fromIndex }: { qId: string; fromGroupId: string; fromIndex: number }) {
+  // Render helper (NOT a nested component): calling a fresh-defined
+  // component <DragCard /> on every render gives React.createElement a
+  // new `type` each time, so reconciliation treats every card as a
+  // different component → unmount/remount → the drag source DOM gets
+  // ripped out mid-drag and the drop never lands. As a plain function
+  // it just returns inline JSX whose root is a stable 'div' element.
+  function renderDragCard(qId: string, fromGroupId: string, fromIndex: number) {
     const q = questionsMap[qId];
     if (!q) return null;
     const isDragging = dragging?.questionId === qId;
     return (
       <div
+        key={qId}
         className={`question-drag-card${isDragging ? " dragging" : ""}`}
         draggable
-        onDragStart={() => setDragging({ questionId: qId, fromGroupId, fromIndex })}
+        onDragStart={(e) => {
+          // Some browsers (Firefox) refuse to start the drag without
+          // any data on the transfer; setting an empty payload is a
+          // standard workaround.
+          try { e.dataTransfer.setData("text/plain", qId); } catch { /* noop */ }
+          e.dataTransfer.effectAllowed = "move";
+          setDragging({ questionId: qId, fromGroupId, fromIndex });
+        }}
         onDragEnd={() => { setDragging(null); setDragOver(null); }}
       >
         <span className="drag-handle">⠿</span>
@@ -1391,7 +1405,11 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
           {/* Ungrouped pool — always leftmost */}
           <div
             className={`mondai-group ungrouped-pool${dragOver === "ungrouped" ? " drag-over" : ""}`}
-            onDragOver={e => { e.preventDefault(); setDragOver("ungrouped"); }}
+            onDragOver={e => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dragOver !== "ungrouped") setDragOver("ungrouped");
+            }}
             onDragLeave={() => setDragOver(prev => prev === "ungrouped" ? null : prev)}
             onDrop={e => handleDrop(e, "ungrouped")}
           >
@@ -1403,9 +1421,7 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
             <div className="mondai-drop-zone">
               {ungrouped.length === 0
                 ? <div className="mondai-empty">Trống — kéo về đây để bỏ nhóm</div>
-                : ungrouped.map((qId, idx) => (
-                    <DragCard key={qId} qId={qId} fromGroupId="ungrouped" fromIndex={idx} />
-                  ))
+                : ungrouped.map((qId, idx) => renderDragCard(qId, "ungrouped", idx))
               }
             </div>
           </div>
@@ -1415,7 +1431,11 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
             <div
               key={g.id}
               className={`mondai-group${dragOver === g.id ? " drag-over" : ""}`}
-              onDragOver={e => { e.preventDefault(); setDragOver(g.id); }}
+              onDragOver={e => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOver !== g.id) setDragOver(g.id);
+              }}
               onDragLeave={() => setDragOver(prev => prev === g.id ? null : prev)}
               onDrop={e => handleDrop(e, g.id)}
             >
@@ -1435,9 +1455,7 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
               <div className="mondai-drop-zone">
                 {g.questionIds.length === 0
                   ? <div className="mondai-empty">Kéo câu hỏi vào đây</div>
-                  : g.questionIds.map((qId, idx) => (
-                      <DragCard key={qId} qId={qId} fromGroupId={g.id} fromIndex={idx} />
-                    ))
+                  : g.questionIds.map((qId, idx) => renderDragCard(qId, g.id, idx))
                 }
               </div>
             </div>
