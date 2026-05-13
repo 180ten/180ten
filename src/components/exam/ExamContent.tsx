@@ -456,7 +456,7 @@ function ChoiceBtn({
         : (
           <>
             <span className="choice-num">{nums[idx] ?? `${idx + 1}`}</span>
-            <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(text, qType)) }} />
+            <span className="choice-label" dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderChoiceText(stripVocabTags(text), qType)) }} />
           </>
         )
       }
