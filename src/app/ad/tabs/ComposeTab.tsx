@@ -1265,8 +1265,17 @@ interface DragItem {
   fromIndex: number;
 }
 
-function MondaiGroupingModal({ questions, onApply, onClose }: {
+function MondaiGroupingModal({
+  questions,
+  ungrouped, setUngrouped,
+  mondaiGroups, setMondaiGroups,
+  onApply, onClose,
+}: {
   questions: ComposeQuestion[];
+  ungrouped: string[];
+  setUngrouped: React.Dispatch<React.SetStateAction<string[]>>;
+  mondaiGroups: MondaiGroup[];
+  setMondaiGroups: React.Dispatch<React.SetStateAction<MondaiGroup[]>>;
   onApply: (orderedIds: string[]) => void;
   onClose: () => void;
 }) {
@@ -1276,11 +1285,6 @@ function MondaiGroupingModal({ questions, onApply, onClose }: {
     return m;
   }, [questions]);
 
-  // Initial state: every question goes to ungrouped, one empty mondai.
-  const [ungrouped, setUngrouped] = useState<string[]>(() => questions.map(q => q.id));
-  const [mondaiGroups, setMondaiGroups] = useState<MondaiGroup[]>(() => [
-    { id: "mondai-1", label: "問題1", questionIds: [] },
-  ]);
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
@@ -1743,6 +1747,11 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   const [pulse, setPulse]               = useState(false);
   const [showJSON, setShowJSON]         = useState(false);
   const [groupingOpen, setGroupingOpen] = useState(false);
+  // Mondai grouping state — lifted out of MondaiGroupingModal so the
+  // file importer can pre-populate it from `m1` / `rm1` / `lm1`
+  // markers, and so user edits persist across modal open/close.
+  const [mondaiGroups, setMondaiGroups] = useState<MondaiGroup[]>([]);
+  const [ungrouped, setUngrouped]       = useState<string[]>([]);
   const [audioUrl, setAudioUrl]         = useState("");
   const [audioUrlDraft, setAudioUrlDraft] = useState("");
   const [bjtAudio, setBjtAudio]         = useState({ part1: "", part2: "" });
@@ -1924,22 +1933,34 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
         });
         const baseOffset = questions.length;
         finalQs = paired.map(({ q }, i) => ({ ...q, order_index: baseOffset + i }));
-        // Build toast: "読解 問題1 (6 câu), 聴解 問題1 (3 câu)" — preserves
-        // the same sort order shown above.
-        const counts = new Map<string, number>();
-        for (const { tag } of paired) {
+
+        // Populate the lifted MondaiGroups state so the next time the
+        // user opens "Phân nhóm 問題" they see the auto-detected
+        // grouping instead of an empty editor. Append to existing
+        // groups so prior manual edits aren't wiped.
+        const detectedGroups = new Map<string, MondaiGroup>();
+        const orderedKeys: string[] = []; // preserve sort order from above
+        for (const { q, tag } of paired) {
           const key = `${tag.section}-${tag.mondai}`;
-          counts.set(key, (counts.get(key) || 0) + 1);
+          let g = detectedGroups.get(key);
+          if (!g) {
+            const lbl = tag.section === "listen" ? `聴解 問題${tag.mondai}` : `読解 問題${tag.mondai}`;
+            g = { id: `auto-${key}-${Date.now()}`, label: lbl, questionIds: [] };
+            detectedGroups.set(key, g);
+            orderedKeys.push(key);
+          }
+          g.questionIds.push(q.id);
         }
-        const labels: string[] = [];
-        for (const [key, count] of counts) {
-          const [sec, num] = key.split("-");
-          const lbl = sec === "listen" ? `聴解 問題${num}` : `読解 問題${num}`;
-          labels.push(`${lbl} (${count} câu)`);
-        }
+        const newGroups = orderedKeys.map((k) => detectedGroups.get(k)!);
+        setMondaiGroups((prev) => [...prev, ...newGroups]);
+
+        const labels = newGroups.map((g) => `${g.label} (${g.questionIds.length} câu)`);
         groupSummary = labels.join(", ");
       } else {
         finalQs = paired.map(({ q }) => q);
+        // No markers — new questions go to the ungrouped pool so the
+        // grouping editor still finds them later.
+        setUngrouped((prev) => [...prev, ...finalQs.map(q => q.id)]);
       }
 
       setQuestions(qs => [...qs, ...finalQs]);
@@ -2047,6 +2068,10 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
       {groupingOpen && (
         <MondaiGroupingModal
           questions={questions}
+          ungrouped={ungrouped}
+          setUngrouped={setUngrouped}
+          mondaiGroups={mondaiGroups}
+          setMondaiGroups={setMondaiGroups}
           onApply={(orderedIds) => {
             const indexById = new Map(orderedIds.map((id, i) => [id, i]));
             setQuestions(prev =>
@@ -2169,7 +2194,25 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
             {questions.length > 0 && (
               <button
                 type="button"
-                onClick={() => setGroupingOpen(true)}
+                onClick={() => {
+                  // Reconcile lifted state with the current questions list
+                  // before opening: drop dead refs, push any orphan
+                  // (newly added since last grouping) into ungrouped, and
+                  // ensure at least one mondai column exists.
+                  const live = new Set(questions.map(q => q.id));
+                  const cleanedGroups = mondaiGroups
+                    .map(g => ({ ...g, questionIds: g.questionIds.filter(id => live.has(id)) }));
+                  const claimed = new Set([
+                    ...ungrouped.filter(id => live.has(id)),
+                    ...cleanedGroups.flatMap(g => g.questionIds),
+                  ]);
+                  const orphans = questions.map(q => q.id).filter(id => !claimed.has(id));
+                  setUngrouped([...ungrouped.filter(id => live.has(id)), ...orphans]);
+                  setMondaiGroups(cleanedGroups.length > 0
+                    ? cleanedGroups
+                    : [{ id: "mondai-1", label: "問題1", questionIds: [] }]);
+                  setGroupingOpen(true);
+                }}
                 style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 7, border: `1.5px solid ${C.accent}`, background: C.accent + "12", color: C.accent, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                 title="Mở trình phân nhóm 問題 — kéo thả câu hỏi vào các nhóm rồi xác nhận thứ tự"
               >📦 Phân nhóm 問題</button>
