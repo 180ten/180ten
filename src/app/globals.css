@@ -1628,6 +1628,26 @@ rt{font-size:.55em;color:var(--muted);line-height:1.1;text-align:center;}
 .anki-folder-row{transition:outline 0.12s,background 0.12s;}
 .anki-deck-row{user-select:none;}
 .anki-deck-row[draggable="true"]:active{cursor:grabbing;}
+/* ── ComposeTab: Mondai grouping modal ─────────────────────────── */
+.mondai-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:3000;padding:24px;}
+.mondai-modal{background:var(--white);border-radius:16px;padding:18px 20px;width:min(100%,1280px);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 30px 70px rgba(0,0,0,.4);}
+.grouping-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.mondai-groups-container{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 14px;align-items:flex-start;flex:1;min-height:0;}
+.mondai-group{min-width:240px;max-width:280px;flex-shrink:0;background:var(--surface,#fafafa);border:2px solid var(--border);border-radius:12px;display:flex;flex-direction:column;max-height:calc(90vh - 110px);}
+.mondai-group.drag-over{border-color:var(--accent);background:#fff8f5;}
+.mondai-group.ungrouped-pool{background:#f0f4ff;border-style:dashed;}
+.mondai-group-header{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--white);border-radius:12px 12px 0 0;flex-shrink:0;}
+.mondai-group.ungrouped-pool .mondai-group-header{background:transparent;}
+.mondai-label-input{font-size:14px;font-weight:700;border:none;background:transparent;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;color:var(--accent);width:100%;outline:none;padding:0;}
+.mondai-label-input:focus{outline:1px solid var(--accent);border-radius:4px;padding:1px 4px;}
+.mondai-drop-zone{padding:8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:120px;}
+.mondai-empty{text-align:center;color:var(--muted2);font-size:12px;padding:24px 12px;border:2px dashed var(--border);border-radius:8px;font-style:italic;}
+.question-drag-card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;cursor:grab;display:flex;align-items:center;gap:8px;user-select:none;transition:box-shadow .12s,border-color .12s;}
+.question-drag-card:hover{border-color:var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.06);}
+.question-drag-card:active{cursor:grabbing;}
+.question-drag-card.dragging{opacity:.4;}
+.question-drag-card .drag-handle{color:var(--muted2);font-size:14px;flex-shrink:0;}
+
 .compose-question-list-scroll{position:relative;border-left:1px solid #1e1e1e;scrollbar-width:thin;scrollbar-color:#4a4a4a #121212;}
 .compose-question-list-scroll::-webkit-scrollbar{width:12px;}
 .compose-question-list-scroll::-webkit-scrollbar-track{background:#121212;border-left:1px solid #222;}

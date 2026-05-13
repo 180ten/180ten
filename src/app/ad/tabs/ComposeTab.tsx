@@ -3,7 +3,7 @@
 // Faithful TypeScript/React port of the JLPTAdmin Babel component
 // from ad.html. Provides a full exam composer matching ad.html's UI.
 // ───────────────────────────────────────────────────────────────
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -1247,6 +1247,207 @@ function FormRouter({ typeId, data, onChange, examAudio, level }: {
   return <div style={{ color: C.muted, padding: 24 }}>Chưa hỗ trợ loại: {typeId}</div>;
 }
 
+// ─── MONDAI GROUPING MODAL ────────────────────────────────────────
+// Lets the admin organise questions into 問題 groups via drag-and-drop.
+// On Apply: flattens (ungrouped → group1 → group2 → …), writes
+// order_index by position, closes. Groups themselves aren't persisted —
+// per spec, the only persisted artifact is the resulting order.
+
+interface MondaiGroup {
+  id: string;
+  label: string;
+  questionIds: string[];
+}
+
+interface DragItem {
+  questionId: string;
+  fromGroupId: string; // 'ungrouped' or mondai group id
+  fromIndex: number;
+}
+
+function MondaiGroupingModal({ questions, onApply, onClose }: {
+  questions: ComposeQuestion[];
+  onApply: (orderedIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const questionsMap = useMemo(() => {
+    const m: Record<string, ComposeQuestion> = {};
+    for (const q of questions) m[q.id] = q;
+    return m;
+  }, [questions]);
+
+  // Initial state: every question goes to ungrouped, one empty mondai.
+  const [ungrouped, setUngrouped] = useState<string[]>(() => questions.map(q => q.id));
+  const [mondaiGroups, setMondaiGroups] = useState<MondaiGroup[]>(() => [
+    { id: "mondai-1", label: "問題1", questionIds: [] },
+  ]);
+  const [dragging, setDragging] = useState<DragItem | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+
+  function addGroup() {
+    setMondaiGroups(prev => [
+      ...prev,
+      { id: `mondai-${prev.length + 1}-${Date.now()}`, label: `問題${prev.length + 1}`, questionIds: [] },
+    ]);
+  }
+
+  function removeGroup(id: string) {
+    setMondaiGroups(prev => {
+      const g = prev.find(x => x.id === id);
+      if (g && g.questionIds.length > 0) {
+        // Move its members back into the ungrouped pool.
+        setUngrouped(u => [...u, ...g.questionIds]);
+      }
+      return prev.filter(x => x.id !== id);
+    });
+  }
+
+  function updateGroupLabel(id: string, label: string) {
+    setMondaiGroups(prev => prev.map(g => g.id === id ? { ...g, label } : g));
+  }
+
+  function moveTo(toGroupId: string) {
+    if (!dragging) return;
+    // Remove from source.
+    if (dragging.fromGroupId === "ungrouped") {
+      setUngrouped(u => u.filter(id => id !== dragging.questionId));
+    } else {
+      setMondaiGroups(prev => prev.map(g =>
+        g.id === dragging.fromGroupId
+          ? { ...g, questionIds: g.questionIds.filter((_, i) => i !== dragging.fromIndex) }
+          : g,
+      ));
+    }
+    // Append to target.
+    if (toGroupId === "ungrouped") {
+      setUngrouped(u => [...u, dragging.questionId]);
+    } else {
+      setMondaiGroups(prev => prev.map(g =>
+        g.id === toGroupId
+          ? { ...g, questionIds: [...g.questionIds, dragging.questionId] }
+          : g,
+      ));
+    }
+  }
+
+  function handleDrop(e: React.DragEvent, toGroupId: string) {
+    e.preventDefault();
+    moveTo(toGroupId);
+    setDragging(null);
+    setDragOver(null);
+  }
+
+  function applyOrder() {
+    const orderedIds = [
+      ...ungrouped,
+      ...mondaiGroups.flatMap(g => g.questionIds),
+    ];
+    onApply(orderedIds);
+  }
+
+  // Order index of a question in the original list — shown on the card so
+  // admins keep their bearings while shuffling.
+  const origIndex: Record<string, number> = {};
+  questions.forEach((q, i) => { origIndex[q.id] = i + 1; });
+
+  function previewText(q: ComposeQuestion): string {
+    const raw = String(
+      q.question || q.sentence || q.passage || q.mainQuestion || q.imageUrl || q.audioUrl || "",
+    ).replace(/\s+/g, " ").trim();
+    return raw.length > 40 ? raw.slice(0, 40) + "…" : (raw || "(trống)");
+  }
+
+  function DragCard({ qId, fromGroupId, fromIndex }: { qId: string; fromGroupId: string; fromIndex: number }) {
+    const q = questionsMap[qId];
+    if (!q) return null;
+    const isDragging = dragging?.questionId === qId;
+    return (
+      <div
+        className={`question-drag-card${isDragging ? " dragging" : ""}`}
+        draggable
+        onDragStart={() => setDragging({ questionId: qId, fromGroupId, fromIndex })}
+        onDragEnd={() => { setDragging(null); setDragOver(null); }}
+      >
+        <span className="drag-handle">⠿</span>
+        <span style={{ fontWeight: 700, color: C.accent, minWidth: 20 }}>{origIndex[qId]}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{previewText(q)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mondai-modal-backdrop" onClick={onClose}>
+      <div className="mondai-modal" onClick={e => e.stopPropagation()}>
+        <div className="grouping-toolbar">
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>📦 Phân nhóm 問題</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={addGroup} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${C.accent}`, background: C.accent + "12", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Thêm 問題</button>
+            <button type="button" onClick={applyOrder} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✓ Xác nhận thứ tự</button>
+            <button type="button" onClick={onClose} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Hủy</button>
+          </div>
+        </div>
+
+        <div className="mondai-groups-container">
+          {/* Ungrouped pool — always leftmost */}
+          <div
+            className={`mondai-group ungrouped-pool${dragOver === "ungrouped" ? " drag-over" : ""}`}
+            onDragOver={e => { e.preventDefault(); setDragOver("ungrouped"); }}
+            onDragLeave={() => setDragOver(prev => prev === "ungrouped" ? null : prev)}
+            onDrop={e => handleDrop(e, "ungrouped")}
+          >
+            <div className="mondai-group-header">
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, padding: "0 4px" }}>
+                📦 Chưa phân nhóm <span style={{ marginLeft: 6, fontSize: 11, padding: "2px 8px", borderRadius: 99, background: C.border2, color: C.muted }}>{ungrouped.length}</span>
+              </div>
+            </div>
+            <div className="mondai-drop-zone">
+              {ungrouped.length === 0
+                ? <div className="mondai-empty">Trống — kéo về đây để bỏ nhóm</div>
+                : ungrouped.map((qId, idx) => (
+                    <DragCard key={qId} qId={qId} fromGroupId="ungrouped" fromIndex={idx} />
+                  ))
+              }
+            </div>
+          </div>
+
+          {/* Mondai groups */}
+          {mondaiGroups.map((g) => (
+            <div
+              key={g.id}
+              className={`mondai-group${dragOver === g.id ? " drag-over" : ""}`}
+              onDragOver={e => { e.preventDefault(); setDragOver(g.id); }}
+              onDragLeave={() => setDragOver(prev => prev === g.id ? null : prev)}
+              onDrop={e => handleDrop(e, g.id)}
+            >
+              <div className="mondai-group-header">
+                <input
+                  className="mondai-label-input"
+                  value={g.label}
+                  onChange={e => updateGroupLabel(g.id, e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeGroup(g.id)}
+                  style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: "0 4px", lineHeight: 1 }}
+                  title="Xoá nhóm (di chuyển câu về Chưa phân nhóm)"
+                >×</button>
+              </div>
+              <div className="mondai-drop-zone">
+                {g.questionIds.length === 0
+                  ? <div className="mondai-empty">Kéo câu hỏi vào đây</div>
+                  : g.questionIds.map((qId, idx) => (
+                      <DragCard key={qId} qId={qId} fromGroupId={g.id} fromIndex={idx} />
+                    ))
+                }
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DRAGGABLE QUESTION LIST ──────────────────────────────────────
 function DraggableQuestionList({ questions, editingId, onEdit, onDelete, onReorder, typeOrder }: {
   questions: ComposeQuestion[];
@@ -1523,6 +1724,7 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     Object.fromEntries(ALL_TYPES.map(t => [t.id, mkDefault(t.id)])));
   const [pulse, setPulse]               = useState(false);
   const [showJSON, setShowJSON]         = useState(false);
+  const [groupingOpen, setGroupingOpen] = useState(false);
   const [audioUrl, setAudioUrl]         = useState("");
   const [audioUrlDraft, setAudioUrlDraft] = useState("");
   const [bjtAudio, setBjtAudio]         = useState({ part1: "", part2: "" });
@@ -1756,6 +1958,21 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     <div style={{ height: "100vh", maxHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'DM Sans','Helvetica Neue',sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {showExamModal && <ExamModal initial={exam} onConfirm={e => { setExam(e); setShowExamModal(false); }} onClose={() => setShowExamModal(false)} />}
       {showSave && <SaveModal exam={exam} questions={questions} audioUrl={exportAudioUrl} onClose={() => setShowSave(false)} showToast={showToast} />}
+      {groupingOpen && (
+        <MondaiGroupingModal
+          questions={questions}
+          onApply={(orderedIds) => {
+            const indexById = new Map(orderedIds.map((id, i) => [id, i]));
+            setQuestions(prev =>
+              [...prev]
+                .map(q => ({ ...q, order_index: indexById.get(q.id) ?? q.order_index ?? 0 }))
+                .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)),
+            );
+            setGroupingOpen(false);
+          }}
+          onClose={() => setGroupingOpen(false)}
+        />
+      )}
 
       {/* TOP BAR */}
       <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: C.surface, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12 }}>
@@ -1863,6 +2080,14 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 99, background: C.border2, color: C.muted, fontWeight: 700 }}>{questions.length}</span>
             </div>
             <div style={{ fontSize: 10, color: C.muted2, marginTop: 3 }}>⠿ kéo để sắp xếp trong cùng nhóm</div>
+            {questions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setGroupingOpen(true)}
+                style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 7, border: `1.5px solid ${C.accent}`, background: C.accent + "12", color: C.accent, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                title="Mở trình phân nhóm 問題 — kéo thả câu hỏi vào các nhóm rồi xác nhận thứ tự"
+              >📦 Phân nhóm 問題</button>
+            )}
           </div>
           <div
             ref={questionListScrollRef}
