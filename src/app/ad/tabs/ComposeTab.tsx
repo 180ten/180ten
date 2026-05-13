@@ -1848,22 +1848,90 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
       const startIdx = headers.some(Boolean) ? 1 : 0;
       const dataRows = rows.slice(startIdx).filter(r => (r || []).some(c => String(c || "").trim() !== ""));
       if (!dataRows.length) { showToast("Không có dòng dữ liệu hợp lệ.", "error"); input.value = ""; return; }
-      const built = dataRows.map((r, i) => {
+
+      // ── Marker parsing: rows like "m1", "rm2", "lm3" (rest of cells
+      // empty) flag the start of a 問題 group. Detected groups produce a
+      // resulting order_index reshuffle; nothing about the grouping is
+      // persisted to the DB. Default section = read, default mondai = 1.
+      const MONDAI_MARKER = /^(r|l)?m(\d+)$/i;
+      let currentSection: "read" | "listen" = "read";
+      let currentMondai = 1;
+      let markersFound = 0;
+      // Parallel array — same length as `built`. Holds the (section,
+      // mondai) tag for each question so we can sort + count groups
+      // after the build pass.
+      const tags: { section: "read" | "listen"; mondai: number }[] = [];
+
+      const built: ComposeQuestion[] = [];
+      for (const r of dataRows) {
+        const firstCell = String((r as unknown[])[0] ?? "").trim();
+        const mm = firstCell.match(MONDAI_MARKER);
+        const restEmpty = (r as unknown[]).slice(1).every((c) => !String(c ?? "").trim());
+        if (mm && restEmpty) {
+          const prefix = (mm[1] || "r").toLowerCase();
+          currentSection = prefix === "l" ? "listen" : "read";
+          currentMondai = parseInt(mm[2], 10);
+          markersFound++;
+          continue;
+        }
         const rowObj: Record<string, string> = {};
-        headers.forEach((h, idx) => { if (h) rowObj[h] = String(r[idx] ?? "").trim(); });
-        return buildQuestionFromExcelRow(activeId, rowObj, exam.level, i);
-      });
-      const valid = built.filter(q => q && (
-        q.question || q.passage || q.sentence || q.imageUrl ||
-        (Array.isArray(q.passages) && q.passages.length) ||
-        (Array.isArray(q.questions) && q.questions.length) ||
-        q.mainQuestion || q.orderNum || (q.type1 && ((q.type1 as QData).correct || (q.type1 as QData).mainQuestion))
-      ));
-      if (!valid.length) { showToast("Không map được dữ liệu cho mondai hiện tại.", "error"); input.value = ""; return; }
-      setQuestions(qs => [...qs, ...valid]);
+        headers.forEach((h, idx) => { if (h) rowObj[h] = String((r as unknown[])[idx] ?? "").trim(); });
+        const q = buildQuestionFromExcelRow(activeId, rowObj, exam.level, built.length);
+        built.push(q);
+        tags.push({ section: currentSection, mondai: currentMondai });
+      }
+
+      // Pair each built row with its tag, drop invalid, then optionally
+      // sort by group when markers were present.
+      const isValid = (q: ComposeQuestion) => !!(
+        q && (
+          q.question || q.passage || q.sentence || q.imageUrl ||
+          (Array.isArray(q.passages) && q.passages.length) ||
+          (Array.isArray(q.questions) && q.questions.length) ||
+          q.mainQuestion || q.orderNum || (q.type1 && ((q.type1 as QData).correct || (q.type1 as QData).mainQuestion))
+        )
+      );
+      const paired = built.map((q, i) => ({ q, tag: tags[i], origIdx: i })).filter((p) => isValid(p.q));
+      if (!paired.length) { showToast("Không map được dữ liệu cho mondai hiện tại.", "error"); input.value = ""; return; }
+
+      let finalQs: ComposeQuestion[];
+      let groupSummary = "";
+      if (markersFound > 0) {
+        // Read groups before listen; mondai number ascending; preserve
+        // upload order within the same group.
+        paired.sort((a, b) => {
+          if (a.tag.section !== b.tag.section) return a.tag.section === "read" ? -1 : 1;
+          if (a.tag.mondai !== b.tag.mondai) return a.tag.mondai - b.tag.mondai;
+          return a.origIdx - b.origIdx;
+        });
+        const baseOffset = questions.length;
+        finalQs = paired.map(({ q }, i) => ({ ...q, order_index: baseOffset + i }));
+        // Build toast: "読解 問題1 (6 câu), 聴解 問題1 (3 câu)" — preserves
+        // the same sort order shown above.
+        const counts = new Map<string, number>();
+        for (const { tag } of paired) {
+          const key = `${tag.section}-${tag.mondai}`;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        const labels: string[] = [];
+        for (const [key, count] of counts) {
+          const [sec, num] = key.split("-");
+          const lbl = sec === "listen" ? `聴解 問題${num}` : `読解 問題${num}`;
+          labels.push(`${lbl} (${count} câu)`);
+        }
+        groupSummary = labels.join(", ");
+      } else {
+        finalQs = paired.map(({ q }) => q);
+      }
+
+      setQuestions(qs => [...qs, ...finalQs]);
       setEditingId(null);
       resetForm();
-      showToast(`Đã import ${valid.length} câu cho ${composeTypeMap[activeId]?.label || TYPE_MAP[activeId]?.label || activeId} ✓`, "success");
+      if (markersFound > 0) {
+        showToast(`✅ Đã phân nhóm tự động: ${groupSummary}`, "success");
+      } else {
+        showToast(`Đã import ${finalQs.length} câu cho ${composeTypeMap[activeId]?.label || TYPE_MAP[activeId]?.label || activeId} ✓`, "success");
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("Lỗi import Excel: " + msg, "error");
