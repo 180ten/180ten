@@ -1158,6 +1158,20 @@ function AudioScriptEditor({
           >×</button>
         </div>
       ))}
+      {lines.some((l) => l.text.trim()) && (
+        <div className="ase-preview">
+          <div className="ase-preview-label">👁 Preview</div>
+          <div className="ase-preview-content">
+            {lines
+              .filter((l) => l.text.trim())
+              .map((line, idx) => (
+                <span key={idx} className="ase-preview-sentence">
+                  {line.text}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
       <button type="button" className="ase-btn-add" onClick={addLine}>
         + Thêm dòng
       </button>
