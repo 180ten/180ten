@@ -1111,6 +1111,54 @@ function AudioUrlField({
   );
 }
 
+// Excel-/CSV-friendly timecode normaliser used by the import button.
+// Returns the canonical "MM:SS" string the editor stores in
+// AudioScriptLine.start/end.
+//
+// Distinct from `parseTimecode` in lib/audioScript.ts (which returns
+// total seconds for the audio element). Same-named on purpose only
+// inside this scope so callers don't mix them up.
+//
+// Accepted shapes:
+//   "00:05" / "1:23"         → "00:05" / "01:23"
+//   "1:23:45"                → "83:45"   (HH rolled into MM)
+//   "0012" / "12"            → "00:12"   (last 2 digits = seconds)
+//   "1210"                   → "12:10"
+//   "100"                    → "01:00"
+//   number (Excel int)       → cast through String()
+//   ""/null/header text      → ""
+function normalizeImportTimecode(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined) return "";
+  const trimmed = String(raw).trim();
+  if (!trimmed) return "";
+  // HH:MM:SS / MM:SS — handle the colon path first so digits-only
+  // values (1210) don't get split on the same rules as "1:2:10".
+  if (trimmed.includes(":")) {
+    const parts = trimmed.split(":").map((p) => p.trim());
+    if (parts.some((p) => p && !/^\d+$/.test(p))) return ""; // header text
+    if (parts.length === 2) {
+      const mm = (parts[0] || "0").padStart(2, "0");
+      const ss = (parts[1] || "0").padStart(2, "0");
+      return `${mm}:${ss}`;
+    }
+    if (parts.length === 3) {
+      const hh = parseInt(parts[0] || "0", 10);
+      const mm = parseInt(parts[1] || "0", 10) + hh * 60;
+      const ss = (parts[2] || "0").padStart(2, "0");
+      return `${String(mm).padStart(2, "0")}:${ss}`;
+    }
+    return "";
+  }
+  // Digits-only path. Strip non-digits, then last 2 = seconds.
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+  const stripped = digits.replace(/^0+/, "") || "0";
+  const padded = stripped.padStart(4, "0");
+  const mm = padded.slice(0, -2).padStart(2, "0");
+  const ss = padded.slice(-2);
+  return `${mm}:${ss}`;
+}
+
 // Per-line transcript editor. Each row = { start, end, text } with
 // MM:SS timecodes. Serialised to a JSON string before save so we can
 // store in a TEXT column (questions.audio_script).
@@ -1129,6 +1177,63 @@ function AudioScriptEditor({
   const addLine      = () => onChange([...lines, { start: "", end: "", text: "" }]);
   const addSpaceLine = () => onChange([...lines, { start: "", end: "", text: "[SPACE]" }]);
   const removeLine   = (idx: number) => onChange(lines.filter((_, i) => i !== idx));
+
+  // Bulk import rows from .xlsx / .xls / .csv. Columns expected:
+  //   A = Start, B = End, C = Nội dung
+  // Header row auto-detected when the first cell has no digits. Empty
+  // content cells are dropped. Confirms before replacing existing
+  // rows (OK = replace, Cancel = append).
+  const handleImportScript = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // allow re-importing the same file later
+    try {
+      let rows: unknown[][] = [];
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith(".csv")) {
+        const text = await file.text();
+        rows = text
+          .split(/\r?\n/)
+          .filter((l) => l.trim())
+          .map((l) => l.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
+      } else {
+        const XLSX = await loadXLSX();
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+      }
+
+      // Drop a leading header row (first cell is text without digits).
+      if (rows.length > 0) {
+        const first = String(rows[0]?.[0] ?? "").trim();
+        if (first && !/\d/.test(first)) rows = rows.slice(1);
+      }
+
+      const newLines: AudioScriptLine[] = rows
+        .map((row) => ({
+          start: normalizeImportTimecode(row[0] as string | number),
+          end:   normalizeImportTimecode(row[1] as string | number),
+          text:  String(row[2] ?? "").trim(),
+        }))
+        .filter((line) => line.text);
+
+      if (newLines.length === 0) {
+        alert("Không tìm thấy dữ liệu. Kiểm tra file có đúng format: cột A=Start, B=End, C=Nội dung");
+        return;
+      }
+
+      const replace = lines.length === 0
+        ? true
+        : window.confirm(
+            `Đang có ${lines.length} dòng. Thay thế hết hay thêm vào cuối?\n\nOK = Thay thế  |  Cancel = Thêm vào cuối`,
+          );
+      onChange(replace ? newLines : [...lines, ...newLines]);
+    } catch (err) {
+      console.error("[AudioScriptImport]", err);
+      alert("Lỗi đọc file. Hãy dùng file Excel (.xlsx, .xls) hoặc CSV (.csv) với cột A=Start, B=End, C=Nội dung.");
+    }
+  };
 
   // Wrap / unwrap the input's current selection with `*…*`. The
   // review renderer turns that into <strong>. Toggle is best-effort:
@@ -1181,6 +1286,19 @@ function AudioScriptEditor({
         >
           <img src="/svg/bold.svg" alt="" width={16} height={16} />
         </button>
+        <label
+          className="ase-toolbar-btn ase-toolbar-btn-upload"
+          title="Import từ Excel (.xlsx/.xls) hoặc CSV — cột A=Start, B=End, C=Nội dung"
+        >
+          <img src="/svg/excel.svg" alt="" width={16} height={16} />
+          <span>Import</span>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            style={{ display: "none" }}
+            onChange={handleImportScript}
+          />
+        </label>
       </div>
       <div className="ase-header">
         <span className="ase-col-time">Start</span>
