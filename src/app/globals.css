@@ -968,10 +968,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
    strip them so <br> from defaultParagraphSeparator just moves down a
    single line. */
 .ade-editor p,.ade-editor div{margin:0;padding:0;}
-/* No horizontal margin/padding on chips — extra spacing creates a
-   gap the caret can land in but can't escape with arrow keys. */
-.ade-chip{display:inline;cursor:default;user-select:none;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;border-bottom:1.5px dashed #0284c7;margin:0;padding:0 0 1px 0;}
-.ade-chip:hover{background:#f0f9ff;border-radius:3px;}
+/* Chip = editable wrapper + non-editable inner. Wrapper stays
+   editable so the caret can rest before/after the inner; the inner
+   is the visible "chip" with the dashed underline. Keydown guard +
+   onInput scrubber keep typing out of the wrapper gap. */
+.ade-chip-wrapper{display:inline;cursor:text;}
+.ade-chip-inner{display:inline;cursor:default;user-select:none;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;border-bottom:1.5px dashed #0284c7;margin:0;padding:0 0 1px 0;}
+.ade-chip-inner:hover{background:#f0f9ff;border-radius:3px;}
 
 /* Review-mode rendering of audio_display HTML */
 .audio-display-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;border-top:1px solid var(--border);white-space:pre-wrap;}

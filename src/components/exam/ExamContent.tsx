@@ -1129,21 +1129,24 @@ function ReadingContent({
 // transcript. Only rendered in review mode. Each parent listen
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
-// Swap each pill placeholder in the editor HTML for a clickable
-// sentence span, then sanitise. Pills whose row was deleted are
+// Swap each chip wrapper in the editor HTML for a clickable
+// sentence span, then sanitise. Wrappers whose row was deleted are
 // dropped silently — saved layouts can outlive the table.
 function renderAudioDisplay(html: string, lines: AudioScriptLine[]): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.querySelectorAll<HTMLElement>("[data-sentence]").forEach((pill) => {
-    const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
+  // Match the wrapper class explicitly so we don't accidentally swap
+  // the inner span (which carries no data-sentence) or any future
+  // unrelated data-sentence attribute the editor might grow.
+  doc.querySelectorAll<HTMLElement>(".ade-chip-wrapper[data-sentence]").forEach((wrap) => {
+    const idx = parseInt(wrap.getAttribute("data-sentence") ?? "-1", 10);
     const line = idx >= 0 ? lines[idx] : undefined;
-    if (!line) { pill.remove(); return; }
+    if (!line) { wrap.remove(); return; }
     const span = doc.createElement("span");
     span.className = "script-sentence";
     span.setAttribute("data-seek-idx", String(idx));
     if (line.start) span.setAttribute("title", `▶ ${line.start}`);
     span.innerHTML = sanitizedRenderRichInline(line.text);
-    pill.replaceWith(span);
+    wrap.replaceWith(span);
   });
   return sanitizeAudioDisplay(doc.body.innerHTML);
 }

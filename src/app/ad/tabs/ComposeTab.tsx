@@ -1200,11 +1200,17 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
-// ContentEditable layout editor for the audio_display column. Pills
-// (`<span data-sentence="N" contenteditable="false">SN</span>`) are
-// auto-synced from the timestamp rows above — admins only arrange them
-// (alignment, line breaks). Review replaces each pill with the actual
-// sentence text and wires click-to-seek by the same data index.
+// ContentEditable layout editor for the audio_display column. Each
+// row in the timestamp table maps to one chip:
+//   <span class="ade-chip-wrapper" data-sentence="N">
+//     <span class="ade-chip-inner" contenteditable="false">…</span>
+//   </span>
+// The wrapper stays editable so the caret can land before/after the
+// non-editable inner without browsers collapsing the surrounding
+// caret stops (which is what plain contenteditable=false leaf chips
+// did, breaking arrow-key navigation past chip 1). The keydown guard
+// + input scrubber below stop admins from typing into the wrapper
+// gap, so the chip's text remains a faithful mirror of the table.
 function AudioDisplayEditor({
   lines, value, onChange,
 }: {
@@ -1234,56 +1240,91 @@ function AudioDisplayEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pill sync — runs whenever the timestamp table mutates.
-  //  - Strip pills whose row no longer exists.
-  //  - Append pills for rows that aren't represented yet.
-  //  - Refresh tooltips so they reflect the live row text.
+  // Chip sync — runs whenever the timestamp table mutates.
+  //  - Strip wrappers whose row no longer exists.
+  //  - Append wrappers for rows that aren't represented yet.
+  //  - Refresh inner text + tooltip so they track live row edits.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     let mutated = false;
 
-    const existingPills = Array.from(
-      editor.querySelectorAll<HTMLElement>("[data-sentence]"),
+    const existing = Array.from(
+      editor.querySelectorAll<HTMLElement>(".ade-chip-wrapper[data-sentence]"),
     );
-    existingPills.forEach((pill) => {
-      const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
+    existing.forEach((wrap) => {
+      const idx = parseInt(wrap.getAttribute("data-sentence") ?? "-1", 10);
       if (idx < 0 || idx >= lines.length) {
-        pill.remove();
+        wrap.remove();
         mutated = true;
       }
     });
 
     lines.forEach((line, idx) => {
-      let chip = editor.querySelector<HTMLElement>(`[data-sentence="${idx}"]`);
+      let wrap = editor.querySelector<HTMLElement>(
+        `.ade-chip-wrapper[data-sentence="${idx}"]`,
+      );
       const text = line?.text ?? "";
       const tip  = line?.start ? `▶ ${line.start}` : "";
-      if (!chip) {
-        chip = document.createElement("span");
-        chip.setAttribute("data-sentence", String(idx));
-        chip.setAttribute("contenteditable", "false");
-        chip.className = "ade-chip";
-        chip.textContent = text;
-        // Append the chip directly. Earlier we flanked chips with
-        // zero-width spaces so the caret would sit beside them, but
-        // those extra text nodes turned arrow-key navigation into
-        // multi-step jumps and made Enter land in the wrong slot.
-        // The CSS `cursor:text` on the editor + zero-padding on the
-        // chip keeps the click-to-place-cursor behaviour intact.
-        editor.appendChild(chip);
+      if (!wrap) {
+        wrap = document.createElement("span");
+        wrap.setAttribute("data-sentence", String(idx));
+        wrap.className = "ade-chip-wrapper";
+        const inner = document.createElement("span");
+        inner.className = "ade-chip-inner";
+        inner.setAttribute("contenteditable", "false");
+        inner.textContent = text;
+        if (tip) inner.title = tip;
+        wrap.appendChild(inner);
+        editor.appendChild(wrap);
         mutated = true;
-      } else if (chip.textContent !== text) {
-        // Live-edit in the timestamp table reflects in the layout
-        // editor immediately — admins see the real sentence they're
-        // arranging, not a stale snapshot.
-        chip.textContent = text;
-        mutated = true;
+      } else {
+        const inner = wrap.querySelector<HTMLElement>(".ade-chip-inner");
+        if (inner) {
+          if (inner.textContent !== text) {
+            inner.textContent = text;
+            mutated = true;
+          }
+          if (inner.title !== tip) inner.title = tip;
+        }
       }
-      if (chip.title !== tip) chip.title = tip;
     });
 
     if (mutated) onChangeRef.current(editor.innerHTML);
   }, [lines]);
+
+  // Block printable input while the caret is inside a chip wrapper —
+  // wrapper is editable (so the caret can land beside the inner) but
+  // we don't want admins typing in that gap. Modifier combos pass
+  // through so Cmd-A / Cmd-C / etc. still work.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    const el = node.nodeType === Node.ELEMENT_NODE
+      ? (node as HTMLElement)
+      : node.parentElement;
+    if (!el?.closest(".ade-chip-wrapper")) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const navKeys = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End","Tab","Escape","Shift"];
+    if (navKeys.includes(e.key)) return;
+    e.preventDefault();
+  };
+
+  // Belt-and-braces: even with the keydown guard, IME / paste / drag
+  // can deposit stray text inside a chip wrapper. Strip any text
+  // node that appears as a direct child of `.ade-chip-wrapper` so
+  // the chip stays a single inner span.
+  const handleInput: React.FormEventHandler<HTMLDivElement> = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.querySelectorAll<HTMLElement>(".ade-chip-wrapper").forEach((wrap) => {
+      Array.from(wrap.childNodes).forEach((n) => {
+        if (n.nodeType === Node.TEXT_NODE) n.parentNode?.removeChild(n);
+      });
+    });
+    onChange(editor.innerHTML);
+  };
 
   const execCmd = (cmd: string, val?: string) => {
     editorRef.current?.focus();
@@ -1329,7 +1370,8 @@ function AudioDisplayEditor({
         contentEditable
         suppressContentEditableWarning
         className="ade-editor"
-        onInput={() => onChange(editorRef.current?.innerHTML ?? "")}
+        onKeyDown={handleKeyDown}
+        onInput={handleInput}
         // Browsers don't honour `placeholder` on contentEditable; the
         // CSS uses :empty::before to fake it from this attribute.
         data-placeholder="Câu thật từ bảng tự xuất hiện ở đây. Sắp xếp + căn lề + Enter xuống dòng tùy ý."
