@@ -24,11 +24,52 @@ type EditingEntry = Partial<VocabEntry> & { examples?: string[] };
 const WORD_TYPES = ["名詞","動詞","サ変動詞","形容詞","な形容詞","副詞","助詞","接続詞","感動詞","助動詞","その他"];
 const PAGE_SIZE = 50;
 
-/** Generate conjugation forms for a verb. Special-cases handle
- *  irregular verbs that don't follow stem-+-ending rules; everything
- *  else falls through to the godan ending switch. Returns [] for words
- *  the heuristic can't handle. Not a full conjugator — just enough to
- *  prefill the variants hint. */
+// ── Verb-group detection ─────────────────────────────────────────────
+// 1. ICHIDAN_EXCEPTIONS: verbs that LOOK godan-ru-ish but are actually
+//    ichidan (single-stem). Anything in here forces ichidan conjugation.
+// 2. GODAN_RU_EXCEPTIONS: verbs ending in る that look ichidan-ish but
+//    are godan. Forces godan conjugation.
+// 3. Default: any of the listed ichidanEndings → ichidan; else godan.
+//
+// Lists are intentionally explicit rather than ML — the heuristic only
+// has to be good enough to prefill the variants hint; admins eyeball
+// before saving.
+const ICHIDAN_EXCEPTIONS = new Set([
+  '浴びる','居る','いる','起きる','降りる','借りる','着る','足りる','できる',
+  '信じる','落ちる','過ぎる','閉じる','生きる','飽きる','伸びる','尽きる',
+  '老いる','似る','煮る','率いる','用いる','染みる','しみる','堕ちる',
+  '朽ちる','満ちる','恥じる','滅びる','報いる','混じる','混じえる',
+  '見る','出る','寝る','食べる','教える','覚える','考える','答える',
+  '調べる','集める','始める','続ける','変える','伝える','見せる',
+  '見える','聞こえる','求める','受ける','負ける','分ける','開ける',
+  '閉める','決める','認める','進める','止める','支える','迎える',
+  '超える','越える','得る','寄せる','乗せる','任せる','捨てる',
+  '建てる','当てる','慣れる','離れる','忘れる','触れる','晴れる',
+  '疲れる','壊れる','売れる','取れる','切れる','折れる','汚れる',
+]);
+
+const GODAN_RU_EXCEPTIONS = new Set([
+  '帰る','切る','知る','入る','走る','蹴る','しゃべる','滑る','握る',
+  '焦る','限る','座る','乗る','降る','通る','売る','取る','作る',
+  '送る','配る','困る','頑張る','終わる','始まる','変わる','分かる',
+  '助かる','泊まる','集まる','決まる','止まる','太る','眠る','曲がる',
+  '上がる','下がる','広がる','繋がる','振る','張る','誇る','喋る','嵌る',
+]);
+
+function isIchidan(word: string): boolean {
+  if (ICHIDAN_EXCEPTIONS.has(word)) return true;
+  if (GODAN_RU_EXCEPTIONS.has(word)) return false;
+  const ichidanEndings = [
+    'える','ける','げる','せる','てる','ねる','べる','める','れる',
+    'いる','きる','ぎる','じる','ちる','にる','ひる','びる','みる','りる',
+  ];
+  return ichidanEndings.some((e) => word.endsWith(e));
+}
+
+// ── Verb conjugator ──────────────────────────────────────────────────
+// Special cases at the top cover irregulars that ignore the godan/
+// ichidan rules. Returns [] when the word doesn't look like a verb the
+// heuristic understands (admin can still type variants manually).
 function generateVerbForms(word: string): string[] {
   if (word === 'ある') return ['あって','あった','ない','なかった','あります','ありません','あれば','あろう'];
   if (word === '行く' || word === 'いく') return ['行って','いって','行った','いった','行かない','いかない','行きます','いきます','行ける','いける','行こう','いこう','行けば'];
@@ -41,44 +82,121 @@ function generateVerbForms(word: string): string[] {
 
   const w = word.trim();
   if (!w) return [];
-  const last = w.slice(-1);
-  const stem = w.slice(0, -1);
-  switch (last) {
-    case "む": return [`${stem}んで`, `${stem}みます`, `${stem}まない`, `${stem}める`];
-    case "ぶ": return [`${stem}んで`, `${stem}びます`, `${stem}ばない`];
-    case "ぬ": return [`${stem}んで`, `${stem}にます`, `${stem}なない`];
-    case "る": return [`${stem}て`,   `${stem}ます`,   `${stem}ない`, `${stem}られる`];
-    case "く": return [`${stem}いて`, `${stem}きます`, `${stem}かない`];
-    case "ぐ": return [`${stem}いで`, `${stem}ぎます`, `${stem}がない`];
-    case "す": return [`${stem}して`, `${stem}します`, `${stem}さない`];
-    case "つ": return [`${stem}って`, `${stem}ちます`, `${stem}たない`];
-    case "う": return [`${stem}って`, `${stem}います`, `${stem}わない`];
-    default:   return [];
+
+  // Ichidan (一段) — drop final る, append ending.
+  if (isIchidan(w)) {
+    const stem = w.slice(0, -1);
+    return [
+      stem+'て', stem+'た', stem+'ない', stem+'なかった',
+      stem+'ます', stem+'ません', stem+'ました',
+      stem+'られる',       // 受身 / 可能
+      stem+'させる',       // 使役
+      stem+'させられる',   // 使役受身
+      stem+'よう',         // 意志
+      stem+'れば',         // 条件
+      stem+'ながら', stem+'たり', stem+'たら', stem+'ても',
+      stem+'ている', stem+'てから',
+    ];
   }
+
+  // Godan (五段) — endings depend on the final mora.
+  const godanMap: Record<string, {
+    te: string; ta: string; neg: string; masu: string;
+    passive: string; causative: string; potential: string;
+    volitional: string; conditional: string;
+  }> = {
+    'う': { te:'って', ta:'った', neg:'わない', masu:'い', passive:'われる', causative:'わせる', potential:'える', volitional:'おう', conditional:'えば' },
+    'く': { te:'いて', ta:'いた', neg:'かない', masu:'き', passive:'かれる', causative:'かせる', potential:'ける', volitional:'こう', conditional:'けば' },
+    'ぐ': { te:'いで', ta:'いだ', neg:'がない', masu:'ぎ', passive:'がれる', causative:'がせる', potential:'げる', volitional:'ごう', conditional:'げば' },
+    'す': { te:'して', ta:'した', neg:'さない', masu:'し', passive:'される', causative:'させる', potential:'せる', volitional:'そう', conditional:'せば' },
+    'つ': { te:'って', ta:'った', neg:'たない', masu:'ち', passive:'たれる', causative:'たせる', potential:'てる', volitional:'とう', conditional:'てば' },
+    'ぬ': { te:'んで', ta:'んだ', neg:'なない', masu:'に', passive:'なれる', causative:'なせる', potential:'ねる', volitional:'のう', conditional:'ねば' },
+    'ぶ': { te:'んで', ta:'んだ', neg:'ばない', masu:'び', passive:'ばれる', causative:'ばせる', potential:'べる', volitional:'ぼう', conditional:'べば' },
+    'む': { te:'んで', ta:'んだ', neg:'まない', masu:'み', passive:'まれる', causative:'ませる', potential:'める', volitional:'もう', conditional:'めば' },
+    'る': { te:'って', ta:'った', neg:'らない', masu:'り', passive:'られる', causative:'らせる', potential:'れる', volitional:'ろう', conditional:'れば' },
+  };
+
+  const lastChar = w.slice(-1);
+  const stem = w.slice(0, -1);
+  const g = godanMap[lastChar];
+  if (!g) return [];
+
+  return [
+    stem+g.te, stem+g.ta, stem+g.neg,
+    stem+g.neg.slice(0, -1)+'なかった',
+    stem+g.masu+'ます', stem+g.masu+'ません', stem+g.masu+'ました',
+    stem+g.passive,                          // 受身
+    stem+g.causative,                        // 使役
+    stem+g.causative.slice(0, -1)+'られる',  // 使役受身
+    stem+g.potential,                        // 可能
+    stem+g.volitional,                       // 意志
+    stem+g.conditional,                      // 条件
+    stem+g.te+'いる',                        // ている
+    stem+g.te+'から',                        // てから
+    stem+g.ta+'り',                          // たり
+    stem+g.ta+'ら',                          // たら
+    stem+g.masu+'ながら',                    // ながら
+  ];
 }
 
-/** Generate conjugation forms for an い-adjective. Special-cases いい
- *  / 良い (which use よ- stem); everything else applies the regular
- *  い-stem rules. */
+// ── i-adjective conjugator ──
 function generateIAdjectiveForms(word: string): string[] {
   if (word === 'いい' || word === '良い') return ['よく','よくて','よくない','よくなかった','よかった','よければ','よくなる','よさ'];
 
   const w = word.trim();
   if (!w || !w.endsWith('い')) return [];
   const stem = w.slice(0, -1);
-  return [`${stem}くて`, `${stem}かった`, `${stem}くない`];
+  return [
+    stem+'く',      stem+'くて',
+    stem+'くない',  stem+'くなかった',
+    stem+'かった',  stem+'ければ',
+    stem+'くなる',  stem+'さ',
+  ];
 }
 
-/** Hint string shown under the empty variants field — joins whichever
- *  generator produces something. Verb takes precedence (covers most
- *  cases); i-adj only fires if verb returns empty. */
-function suggestVariants(word: string): string {
+// ── na-adjective conjugator (uses the copula since na-adj itself
+// doesn't inflect — these are the forms learners look for). ──
+function generateNaAdjectiveForms(word: string): string[] {
   const w = word.trim();
-  if (!w) return "";
-  const verbForms = generateVerbForms(w);
-  if (verbForms.length > 0) return verbForms.join(", ");
-  const adjForms = generateIAdjectiveForms(w);
-  if (adjForms.length > 0) return adjForms.join(", ");
+  if (!w) return [];
+  return [
+    w+'な',       // attributive
+    w+'に',       // adverbial
+    w+'だ',       // plain assertive
+    w+'です',     // polite
+    w+'でした',   // polite past
+    w+'じゃない',
+    w+'じゃなかった',
+    w+'で',       // te-form
+    w+'なら',     // conditional
+  ];
+}
+
+// ── Hint dispatcher ──
+// Picks the right generator from word_type when available; falls back
+// to ending-based detection. Returned string is what shows under the
+// empty variants field (admin copy-pastes / edits).
+function generateHint(word: string, wordType: string): string {
+  if (!word) return "";
+
+  const wt = (wordType ?? "").toLowerCase();
+  if (wt.includes("động từ") || wt.includes("動詞") || wt.includes("verb")) {
+    return generateVerbForms(word).join(", ");
+  }
+  if (wt.includes("tính từ い") || wt.includes("i-adj") || wt.includes("形容詞")) {
+    return generateIAdjectiveForms(word).join(", ");
+  }
+  if (wt.includes("tính từ な") || wt.includes("na-adj") || wt.includes("形容動詞")) {
+    return generateNaAdjectiveForms(word).join(", ");
+  }
+
+  // Fallback: detect by ending.
+  if (["る","う","く","ぐ","す","つ","ぬ","ぶ","む"].some((e) => word.endsWith(e))) {
+    return generateVerbForms(word).join(", ");
+  }
+  if (word.endsWith("い") && word !== "ない") {
+    return generateIAdjectiveForms(word).join(", ");
+  }
   return "";
 }
 
@@ -744,7 +862,7 @@ export default function VocabTab() {
               {(() => {
                 const w = editEntry.word?.trim() ?? "";
                 const noVariants = (editEntry.variants ?? []).length === 0;
-                const hint = noVariants && w ? suggestVariants(w) : "";
+                const hint = noVariants && w ? generateHint(w, editEntry.word_type ?? "") : "";
                 if (!hint) {
                   return (
                     <div style={{ fontSize: 11, color: "#777", marginTop: 5 }}>
