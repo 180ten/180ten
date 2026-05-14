@@ -133,7 +133,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       .in("session_key", sessionKeys)
       .gt("expires_at", new Date().toISOString()),
     sb.from("questions")
-      .select("id,exam_id,type,level,order_index,data")
+      .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
       .in("exam_id", examIds),
   ]);
 

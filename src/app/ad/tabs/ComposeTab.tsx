@@ -5,6 +5,7 @@
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { autoTrack, type AutoTrackDict } from "@/lib/autoTrack";
+import { parseScriptLines, type AudioScriptLine } from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -1089,23 +1090,97 @@ function AudioPreview({ audioUrl }: { audioUrl: string }) {
     </div>
   );
 }
-// Per-listen-question audio transcript. Stored at data.audioScript so
-// no DB migration is needed — data is already in every relevant SELECT.
-// Hidden during the exam, revealed inline under the audio bar in
-// review mode.
+// Per-listen-question audio override. Top-level column, not nested in
+// data — so the upsert flow has to extract it before writing `data`
+// (handled in handleSave below).
+function AudioUrlField({
+  value, onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Fl
+      label="🔊 Audio URL câu này (review override)"
+      hint="Mặc định dùng audio chung của đề; điền vào nếu câu này có file riêng."
+    >
+      <Inp
+        value={value}
+        onChange={onChange}
+        placeholder="https://... (chỉ áp dụng khi review)"
+        noBracketBtn
+      />
+    </Fl>
+  );
+}
+
+// Per-line transcript editor. Each row = { start, end, text } with
+// MM:SS timecodes. Serialised to a JSON string before save so we can
+// store in a TEXT column (questions.audio_script).
+function AudioScriptEditor({
+  lines, onChange,
+}: { lines: AudioScriptLine[]; onChange: (next: AudioScriptLine[]) => void }) {
+  const updateLine = (idx: number, field: keyof AudioScriptLine, value: string) => {
+    onChange(lines.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
+  };
+  const addLine = () => onChange([...lines, { start: "", end: "", text: "" }]);
+  const removeLine = (idx: number) => onChange(lines.filter((_, i) => i !== idx));
+  return (
+    <div className="audio-script-editor">
+      <div className="ase-header">
+        <span className="ase-col-time">Start</span>
+        <span className="ase-col-time">End</span>
+        <span className="ase-col-text">Nội dung</span>
+        <span className="ase-col-action" />
+      </div>
+      {lines.map((line, idx) => (
+        <div key={idx} className="ase-row">
+          <input
+            className="ase-input-time"
+            value={line.start}
+            onChange={(e) => updateLine(idx, "start", e.target.value)}
+            placeholder="00:05"
+          />
+          <input
+            className="ase-input-time"
+            value={line.end}
+            onChange={(e) => updateLine(idx, "end", e.target.value)}
+            placeholder="00:12"
+          />
+          <input
+            className="ase-input-text"
+            value={line.text}
+            onChange={(e) => updateLine(idx, "text", e.target.value)}
+            placeholder="Nội dung câu..."
+          />
+          <button
+            type="button"
+            className="ase-btn-remove"
+            title="Xoá dòng"
+            onClick={() => removeLine(idx)}
+          >×</button>
+        </div>
+      ))}
+      <button type="button" className="ase-btn-add" onClick={addLine}>
+        + Thêm dòng
+      </button>
+    </div>
+  );
+}
+
+// Wrapper — owns the parse/serialize bridge. data.audioScript stores
+// the JSON-stringified array; the editor works with the parsed list.
 function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
-  const value = String(data.audioScript ?? "");
+  const lines = parseScriptLines(typeof data.audioScript === "string" ? data.audioScript : null);
   return (
     <Fl
       label="📝 Script bài nghe (review only)"
-      hint="Hỗ trợ {(漢字)(ふりがな)} furigana, 〖từ〗, 〔ngữ pháp〕. Chỉ hiện sau khi nộp bài."
+      hint="Mỗi dòng có timecode (MM:SS) — review cho phép click để tua audio. Hỗ trợ {(漢字)(ふりがな)}, 〖từ〗, 〔mẫu〕."
     >
-      <Ta
-        value={value}
-        onChange={(v) => onChange({ ...data, audioScript: v })}
-        placeholder="Nhập transcript / script của đoạn audio..."
-        rows={5}
-        noBracketBtn
+      <AudioScriptEditor
+        lines={lines}
+        onChange={(next) => onChange({
+          ...data,
+          // Empty array → null so we don't pollute the row with "[]".
+          audioScript: next.length > 0 ? JSON.stringify(next) : "",
+        })}
       />
     </Fl>
   );
@@ -1125,6 +1200,10 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioUrlField
+        value={String(data.audioUrl ?? "")}
+        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      />
       <AudioScriptField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
@@ -1162,6 +1241,10 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioUrlField
+        value={String(data.audioUrl ?? "")}
+        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      />
       <AudioScriptField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
@@ -1205,6 +1288,10 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioUrlField
+        value={String(data.audioUrl ?? "")}
+        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      />
       <AudioScriptField data={data} onChange={onChange} />
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
@@ -1785,12 +1872,22 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
       console.error("exam upsert error:", msg);
       setStatus("error"); setErrMsg("Lỗi upsert exam: " + msg); return;
     }
-    const qs = questions.map((q, i) => ({
-      id: q.id, exam_id: exam.id, type: q.type,
-      level: q.level || exam.level,
-      order_index: q.order_index ?? i,
-      data: q,
-    }));
+    const qs = questions.map((q, i) => {
+      // Mirror the per-question audio override + transcript out to the
+      // top-level columns. data.audioUrl / data.audioScript stay in
+      // the JSONB body so the load flow can spread them back into the
+      // editor without an extra read path.
+      const audioUrl    = typeof q.audioUrl    === "string" ? q.audioUrl    : null;
+      const audioScript = typeof q.audioScript === "string" ? q.audioScript : null;
+      return {
+        id: q.id, exam_id: exam.id, type: q.type,
+        level: q.level || exam.level,
+        order_index: q.order_index ?? i,
+        data: q,
+        audio_url:    audioUrl    || null,
+        audio_script: audioScript || null,
+      };
+    });
     try {
       await adminUpsertQuestions(qs as Record<string, unknown>[]);
     } catch (e) {
@@ -2129,11 +2226,19 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
       const { data: qs, error } = await sb.from("questions").select("*").eq("exam_id", examData.id).order("order_index");
       if (error) { showToast("Lỗi load câu hỏi: "+error.message, "error"); return; }
       const newFormData = Object.fromEntries(ALL_TYPES.map(t => [t.id, mkDefault(t.id)]));
-      const loadedQs: ComposeQuestion[] = (qs||[]).map(q => ({
-        ...(q.data as QData || {}),
-        id: String(q.id), type: String(q.type), level: String(q.level||examData.level||""),
-        order_index: Number(q.order_index ?? 0),
-      }));
+      const loadedQs: ComposeQuestion[] = (qs||[]).map(q => {
+        // Top-level audio_* columns win over the data-body copy when
+        // both exist — they're the source of truth post-migration.
+        const data = (q.data as QData) || {};
+        const top = q as Record<string, unknown>;
+        return {
+          ...data,
+          id: String(q.id), type: String(q.type), level: String(q.level||examData.level||""),
+          order_index: Number(q.order_index ?? 0),
+          audioUrl:    typeof top.audio_url    === "string" && top.audio_url    ? top.audio_url    : (data.audioUrl    ?? ""),
+          audioScript: typeof top.audio_script === "string" && top.audio_script ? top.audio_script : (data.audioScript ?? ""),
+        } as ComposeQuestion;
+      });
       setExam({
         id: String(examData.id), name: String(examData.name), level: String(examData.level),
         year: String(examData.year||""), loai: String(examData.loai||"Chính Thức"),

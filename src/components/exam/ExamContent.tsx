@@ -15,6 +15,7 @@ import {
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
 import { extractGrammarSegments, stripGrammarTags, lookupGrammar, prefetchGrammar } from "@/lib/grammarTag";
+import { parseScriptLines, parseTimecode, type AudioScriptLine } from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -1124,33 +1125,73 @@ function ReadingContent({
   return <>{elems}</>;
 }
 
-// Collapsible per-question audio script — only meaningful in review
-// mode. Stored at q.audioScript (carried through page.tsx's data
-// flatten step). Renders through sanitizedRenderRich so admin's
-// {(漢字)(ふりがな)} furigana, 〖〗 vocab tags, and 〔〕 grammar tags
-// all display the same as the surrounding passage text.
-function ListenScriptBox({ script }: { script: string }) {
+// Per-listen-question audio block: <audio> player + collapsible
+// transcript. Only rendered in review mode. Each parent listen
+// question owns its own <audio> ref so clicking a script line seeks
+// THAT question's clip, not some sibling player.
+function ListenAudioAndScript({
+  audioSrc, lines,
+}: {
+  audioSrc: string | null;
+  lines: AudioScriptLine[];
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [activeLine, setActiveLine] = useState<number | null>(null);
+
+  function handleLineClick(idx: number, start: string) {
+    const a = audioRef.current;
+    if (!a) return;
+    a.currentTime = parseTimecode(start);
+    void a.play().catch(() => { /* user gesture rules — ignore */ });
+    setActiveLine(idx);
+  }
+
+  if (!audioSrc && lines.length === 0) return null;
   return (
-    <div className="audio-script-box">
-      <div className="audio-script-header">
-        <span>📝 Script</span>
-        <button
-          type="button"
-          className="audio-script-toggle"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          {open ? "▲ Ẩn" : "▼ Xem script"}
-        </button>
-      </div>
-      {open && (
-        <div
-          className="audio-script-content"
-          dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(script) }}
-        />
+    <>
+      {audioSrc && (
+        <div className="audio-bar">
+          <audio
+            ref={audioRef}
+            controls
+            src={encodeAudioUrl(audioSrc)}
+          />
+        </div>
       )}
-    </div>
+      {lines.length > 0 && (
+        <div className="audio-script-box">
+          <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
+            <span>📝 Script</span>
+            <button
+              type="button"
+              className="audio-script-toggle"
+              onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+              aria-expanded={open}
+            >
+              {open ? "▲ Ẩn" : "▼ Xem script"}
+            </button>
+          </div>
+          {open && (
+            <div className="audio-script-content">
+              {lines.map((line, idx) => (
+                <div
+                  key={idx}
+                  className={`script-line${activeLine === idx ? " active" : ""}`}
+                  onClick={() => handleLineClick(idx, line.start)}
+                >
+                  {line.start && <span className="script-time">{line.start}</span>}
+                  <span
+                    className="script-text"
+                    dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(line.text) }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1228,12 +1269,29 @@ function ListeningContent({
       lastType = type;
     }
 
-    // Per-question audio script — only shows after submit. Stored at
-    // data.audioScript and surfaced via the data-flatten on page.tsx
-    // (so `q.audioScript` is reachable here as a plain string).
-    const audioScript = (q as { audioScript?: unknown }).audioScript;
-    if (submitted && typeof audioScript === "string" && audioScript.trim()) {
-      elems.push(<ListenScriptBox key={`${id}-script`} script={audioScript} />);
+    // Per-question audio block — only in review. The audio src
+    // priority is: top-level `audio_url` column, then legacy
+    // data.audioUrl, then fall back to nothing (the section-wide
+    // audio bar at the top still plays the exam-level clip).
+    if (submitted) {
+      const perQAudio =
+        (typeof (q as { audio_url?: unknown }).audio_url === "string" && (q as { audio_url: string }).audio_url) ||
+        (typeof (q as { audioUrl?: unknown }).audioUrl === "string" && (q as { audioUrl: string }).audioUrl) ||
+        null;
+      const scriptRaw =
+        (typeof (q as { audio_script?: unknown }).audio_script === "string" && (q as { audio_script: string }).audio_script) ||
+        (typeof (q as { audioScript?: unknown }).audioScript === "string" && (q as { audioScript: string }).audioScript) ||
+        null;
+      const lines: AudioScriptLine[] = parseScriptLines(scriptRaw);
+      if (perQAudio || lines.length > 0) {
+        elems.push(
+          <ListenAudioAndScript
+            key={`${id}-audio-script`}
+            audioSrc={perQAudio}
+            lines={lines}
+          />,
+        );
+      }
     }
 
     if (type === "listen_togo") {

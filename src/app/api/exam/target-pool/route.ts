@@ -96,7 +96,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // 4) Pull all matching questions across those exams
   const { data: rows, error: qErr } = await sb
     .from("questions")
-    .select("id,exam_id,type,level,order_index,data")
+    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
     .in("exam_id", examIds)
     .eq("type", mondaiType);
   if (qErr) return jsonError(500, qErr.message);
@@ -178,7 +178,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const { data: parentRows, error: parentErr } = await sb
     .from("questions")
-    .select("id,exam_id,type,level,order_index,data")
+    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
     .in("exam_id", parentExamIds);
   if (parentErr) return jsonError(500, parentErr.message);
   const posMaps: Record<string, AnswerPositionMap> = {};

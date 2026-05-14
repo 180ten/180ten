@@ -192,6 +192,11 @@ export interface RawQuestion {
   level?: string | null;
   order_index?: number | null;
   data: Record<string, unknown>;
+  /** Per-question audio override (review mode). Falls back to
+   *  data.audioUrl / exam.audio_url at render time. */
+  audio_url?: string | null;
+  /** JSON-stringified AudioScriptLine[] (see lib/audioScript.ts). */
+  audio_script?: string | null;
 }
 
 export interface SanitizedQuestion {
@@ -200,6 +205,8 @@ export interface SanitizedQuestion {
   level?: string | null;
   order_index?: number | null;
   data: Record<string, unknown>; // contains `choices` arrays, no `correct`/`wrongs`
+  audio_url?: string | null;
+  audio_script?: string | null;
 }
 
 // ─── Internal: replace correct+wrongs with shuffled choices ─────────
@@ -301,6 +308,8 @@ export function sanitizeQuestion(
       level: q.level ?? null,
       order_index: q.order_index ?? null,
       data,
+      audio_url:    q.audio_url    ?? null,
+      audio_script: q.audio_script ?? null,
     },
     slotKeys,
   };

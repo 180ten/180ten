@@ -923,8 +923,28 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .audio-script-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9ff;font-size:13px;font-weight:700;color:var(--text);}
 .audio-script-toggle{border:none;background:none;font-size:12px;color:var(--accent);cursor:pointer;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-weight:600;padding:0;}
 .audio-script-toggle:hover{text-decoration:underline;}
-.audio-script-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap;border-top:1px solid var(--border);font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
-.audio-script-content > div{font-size:15px !important;line-height:1.8 !important;}
+.audio-script-content{padding:8px;border-top:1px solid var(--border);font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
+/* Per-line click-to-seek rows in review-mode script box */
+.script-line{display:flex;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;align-items:flex-start;transition:background .15s;line-height:1.6;}
+.script-line:hover{background:#f0f9ff;}
+.script-line.active{background:#e0f2fe;}
+.script-time{font-size:11px;color:#0284c7;font-family:monospace;min-width:42px;padding-top:2px;flex-shrink:0;}
+.script-text{font-size:14px;color:var(--text);flex:1;}
+.script-text > div{font-size:14px !important;line-height:1.6 !important;}
+
+/* AudioScriptEditor (admin ComposeTab) — dark variant matching
+   admin shell. Uses inline-style colors via vars where available. */
+.audio-script-editor{border:1.5px solid #2a2a2a;border-radius:10px;overflow:hidden;background:#0f0f0f;}
+.ase-header{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:8px 10px;background:#1a1a1a;font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em;}
+.ase-row{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:6px 10px;border-top:1px solid #2a2a2a;align-items:center;}
+.ase-input-time{font-size:13px;padding:5px 6px;border:1px solid #2a2a2a;border-radius:6px;text-align:center;font-family:monospace;width:100%;background:#0a0a0a;color:#e8e8e8;outline:none;}
+.ase-input-time:focus{border-color:#6C6FF7;}
+.ase-input-text{font-size:13px;padding:5px 8px;border:1px solid #2a2a2a;border-radius:6px;width:100%;font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;background:#0a0a0a;color:#e8e8e8;outline:none;}
+.ase-input-text:focus{border-color:#6C6FF7;}
+.ase-btn-remove{width:28px;height:28px;border:none;background:#3a1818;color:#E05555;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;line-height:1;}
+.ase-btn-remove:hover{background:#5a2020;}
+.ase-btn-add{width:100%;padding:8px;border:none;background:#1a1a2e;color:#9ea1ff;font-size:13px;font-weight:600;cursor:pointer;border-top:1px solid #2a2a2a;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
+.ase-btn-add:hover{background:#252540;}
 
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
