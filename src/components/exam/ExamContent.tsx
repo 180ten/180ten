@@ -1184,7 +1184,10 @@ function ListenAudioAndScript({
                   // would force every sentence onto its own line. The
                   // *Inline variant skips the wrapper while keeping
                   // furigana / vocab / grammar tag rendering intact.
-                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) + (idx < lines.length - 1 ? " " : "") }}
+                  // No separator between sentences — Japanese prose
+                  // typically isn't space-separated and the trailing
+                  // space was creating visible gaps between sentences.
+                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
                 />
               ))}
             </div>
