@@ -1129,6 +1129,25 @@ function ReadingContent({
 // transcript. Only rendered in review mode. Each parent listen
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
+// Swap each pill placeholder in the editor HTML for a clickable
+// sentence span, then sanitise. Pills whose row was deleted are
+// dropped silently — saved layouts can outlive the table.
+function renderAudioDisplay(html: string, lines: AudioScriptLine[]): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll<HTMLElement>("[data-sentence]").forEach((pill) => {
+    const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
+    const line = idx >= 0 ? lines[idx] : undefined;
+    if (!line) { pill.remove(); return; }
+    const span = doc.createElement("span");
+    span.className = "script-sentence";
+    span.setAttribute("data-seek-idx", String(idx));
+    if (line.start) span.setAttribute("title", `▶ ${line.start}`);
+    span.innerHTML = sanitizedRenderRichInline(line.text);
+    pill.replaceWith(span);
+  });
+  return sanitizeAudioDisplay(doc.body.innerHTML);
+}
+
 function ListenAudioAndScript({
   audioSrc, lines, audioDisplay,
 }: {
@@ -1149,6 +1168,12 @@ function ListenAudioAndScript({
   }
 
   const hasDisplay = !!(audioDisplay && audioDisplay.trim());
+  // Prerender the rich layout once per (html, lines) pair so click
+  // handling doesn't trigger a re-parse on every render.
+  const displayHtml = useMemo(
+    () => (hasDisplay ? renderAudioDisplay(audioDisplay!, lines) : ""),
+    [hasDisplay, audioDisplay, lines],
+  );
   if (!audioSrc && lines.length === 0 && !hasDisplay) return null;
   return (
     <div className="per-question-audio-wrap">
@@ -1176,12 +1201,17 @@ function ListenAudioAndScript({
           </div>
           {open && (
             hasDisplay ? (
-              // Admin-supplied rich layout wins — click-to-seek isn't
-              // wired here because the display can re-arrange / merge
-              // sentences arbitrarily, breaking the line-index mapping.
               <div
                 className="audio-display-content"
-                dangerouslySetInnerHTML={{ __html: sanitizeAudioDisplay(audioDisplay!) }}
+                dangerouslySetInnerHTML={{ __html: displayHtml }}
+                onClick={(e) => {
+                  // Event delegation — the inner spans don't get React
+                  // handlers because they came from dangerouslySetInnerHTML.
+                  const tgt = (e.target as HTMLElement).closest<HTMLElement>("[data-seek-idx]");
+                  if (!tgt) return;
+                  const idx = parseInt(tgt.getAttribute("data-seek-idx") ?? "-1", 10);
+                  if (idx >= 0 && lines[idx]) handleLineClick(idx, lines[idx].start);
+                }}
               />
             ) : (
               <div className="script-paragraph">

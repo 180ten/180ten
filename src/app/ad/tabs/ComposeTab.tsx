@@ -1200,17 +1200,28 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
-// ContentEditable rich-text editor for the audio_display column —
-// independent of the timestamp table. Saves raw HTML; review mode runs
-// it through sanitizeAudioDisplay before render.
+// ContentEditable layout editor for the audio_display column. Pills
+// (`<span data-sentence="N" contenteditable="false">SN</span>`) are
+// auto-synced from the timestamp rows above — admins only arrange them
+// (alignment, line breaks). Review replaces each pill with the actual
+// sentence text and wires click-to-seek by the same data index.
 function AudioDisplayEditor({
-  value, onChange,
-}: { value: string; onChange: (html: string) => void }) {
+  lines, value, onChange,
+}: {
+  lines: AudioScriptLine[];
+  value: string;
+  onChange: (html: string) => void;
+}) {
   const editorRef = useRef<HTMLDivElement>(null);
+  // Effect-stable handle to onChange — depending on it directly would
+  // force the sync effect to rerun on every parent render, since the
+  // listen forms hand a fresh closure each time.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
 
-  // Seed once on mount; further DOM updates are driven by the user's
-  // typing. Re-syncing on every `value` change would steal caret
-  // position whenever the parent state round-trips.
+  // Seed once on mount; ongoing DOM updates come from typing + the
+  // pill-sync effect below. Re-applying `value` on every change would
+  // steal caret position.
   useEffect(() => {
     const el = editorRef.current;
     if (el && el.innerHTML !== (value ?? "")) {
@@ -1218,6 +1229,53 @@ function AudioDisplayEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pill sync — runs whenever the timestamp table mutates.
+  //  - Strip pills whose row no longer exists.
+  //  - Append pills for rows that aren't represented yet.
+  //  - Refresh tooltips so they reflect the live row text.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    let mutated = false;
+
+    const existingPills = Array.from(
+      editor.querySelectorAll<HTMLElement>("[data-sentence]"),
+    );
+    existingPills.forEach((pill) => {
+      const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
+      if (idx < 0 || idx >= lines.length) {
+        // Drop the joining space we inserted before this pill so the
+        // editor doesn't accumulate orphan whitespace.
+        const prev = pill.previousSibling;
+        if (prev && prev.nodeType === Node.TEXT_NODE && prev.nodeValue === " ") {
+          prev.parentNode?.removeChild(prev);
+        }
+        pill.remove();
+        mutated = true;
+      }
+    });
+
+    lines.forEach((line, idx) => {
+      let pill = editor.querySelector<HTMLElement>(`[data-sentence="${idx}"]`);
+      if (!pill) {
+        pill = document.createElement("span");
+        pill.setAttribute("data-sentence", String(idx));
+        pill.setAttribute("contenteditable", "false");
+        pill.className = "ade-pill";
+        pill.textContent = `S${idx + 1}`;
+        if (editor.innerHTML.trim()) {
+          editor.appendChild(document.createTextNode(" "));
+        }
+        editor.appendChild(pill);
+        mutated = true;
+      }
+      const tip = (line?.text ?? "").slice(0, 40);
+      if (pill.title !== tip) pill.title = tip;
+    });
+
+    if (mutated) onChangeRef.current(editor.innerHTML);
+  }, [lines]);
 
   const execCmd = (cmd: string, val?: string) => {
     editorRef.current?.focus();
@@ -1232,9 +1290,6 @@ function AudioDisplayEditor({
         <button type="button" onClick={() => execCmd("justifyCenter")} title="Căn giữa">↔</button>
         <button type="button" onClick={() => execCmd("justifyRight")}  title="Căn phải">➡</button>
         <div className="ade-sep" />
-        <button type="button" onClick={() => execCmd("bold")}   title="Bold"><strong>B</strong></button>
-        <button type="button" onClick={() => execCmd("italic")} title="Italic"><em>I</em></button>
-        <div className="ade-sep" />
         <button type="button" onClick={() => execCmd("insertParagraph")} title="Xuống dòng">↵</button>
       </div>
       <div
@@ -1245,19 +1300,26 @@ function AudioDisplayEditor({
         onInput={() => onChange(editorRef.current?.innerHTML ?? "")}
         // Browsers don't honour `placeholder` on contentEditable; the
         // CSS uses :empty::before to fake it from this attribute.
-        data-placeholder="Nhập nội dung hiển thị script (hỗ trợ căn lề, xuống dòng...)"
+        data-placeholder="Pill S1, S2... tự thêm theo bảng. Sắp xếp + căn lề + Enter xuống dòng tùy ý."
       />
     </div>
   );
 }
 
 function AudioDisplayField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
+  // Reuse the same parsed lines AudioScriptField sees so the pill-sync
+  // effect runs on a stable reference (not a new array per render).
+  const lines = useMemo(
+    () => parseScriptLines(typeof data.audioScript === "string" ? data.audioScript : null),
+    [data.audioScript],
+  );
   return (
     <Fl
       label="🎨 Trình bày script (hiển thị trong review)"
-      hint="Căn lề, xuống dòng tùy ý. Khi có nội dung, review sẽ hiển thị bố cục này thay cho đoạn inline ở trên."
+      hint="Pill S1, S2... đồng bộ tự động theo bảng. Admin chỉ căn lề + Enter xuống dòng — review thay pill bằng câu thật và bật click-to-seek."
     >
       <AudioDisplayEditor
+        lines={lines}
         value={typeof data.audioDisplay === "string" ? data.audioDisplay : ""}
         onChange={(html) => onChange({ ...data, audioDisplay: html })}
       />
