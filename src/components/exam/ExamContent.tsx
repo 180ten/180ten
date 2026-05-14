@@ -1124,6 +1124,36 @@ function ReadingContent({
   return <>{elems}</>;
 }
 
+// Collapsible per-question audio script — only meaningful in review
+// mode. Stored at q.audioScript (carried through page.tsx's data
+// flatten step). Renders through sanitizedRenderRich so admin's
+// {(漢字)(ふりがな)} furigana, 〖〗 vocab tags, and 〔〕 grammar tags
+// all display the same as the surrounding passage text.
+function ListenScriptBox({ script }: { script: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="audio-script-box">
+      <div className="audio-script-header">
+        <span>📝 Script</span>
+        <button
+          type="button"
+          className="audio-script-toggle"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          {open ? "▲ Ẩn" : "▼ Xem script"}
+        </button>
+      </div>
+      {open && (
+        <div
+          className="audio-script-content"
+          dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(script) }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Listening content ──
 function ListeningContent({
   questions, answers, answerKey, keyTypeMap, submitted, onPick, audioUrl, level, onAddToAnki,
@@ -1196,6 +1226,14 @@ function ListeningContent({
         );
       }
       lastType = type;
+    }
+
+    // Per-question audio script — only shows after submit. Stored at
+    // data.audioScript and surfaced via the data-flatten on page.tsx
+    // (so `q.audioScript` is reachable here as a plain string).
+    const audioScript = (q as { audioScript?: unknown }).audioScript;
+    if (submitted && typeof audioScript === "string" && audioScript.trim()) {
+      elems.push(<ListenScriptBox key={`${id}-script`} script={audioScript} />);
     }
 
     if (type === "listen_togo") {

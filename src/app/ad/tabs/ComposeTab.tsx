@@ -1089,6 +1089,28 @@ function AudioPreview({ audioUrl }: { audioUrl: string }) {
     </div>
   );
 }
+// Per-listen-question audio transcript. Stored at data.audioScript so
+// no DB migration is needed — data is already in every relevant SELECT.
+// Hidden during the exam, revealed inline under the audio bar in
+// review mode.
+function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
+  const value = String(data.audioScript ?? "");
+  return (
+    <Fl
+      label="📝 Script bài nghe (review only)"
+      hint="Hỗ trợ {(漢字)(ふりがな)} furigana, 〖từ〗, 〔ngữ pháp〕. Chỉ hiện sau khi nộp bài."
+    >
+      <Ta
+        value={value}
+        onChange={(v) => onChange({ ...data, audioScript: v })}
+        placeholder="Nhập transcript / script của đoạn audio..."
+        rows={5}
+        noBracketBtn
+      />
+    </Fl>
+  );
+}
+
 function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
@@ -1103,6 +1125,7 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioScriptField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1139,6 +1162,7 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioScriptField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1181,6 +1205,7 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
+      <AudioScriptField data={data} onChange={onChange} />
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
         {isN1OrN2Level(level) && (
