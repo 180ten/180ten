@@ -924,6 +924,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .compose-tag-btn.vocab:hover{background:#fff1e0;}
 .compose-tag-btn.grammar{border-color:#0ea5e9;color:#0ea5e9;background:#f0f9ff;}
 .compose-tag-btn.grammar:hover{background:#e0f2fe;}
+.compose-tag-btn.autotrack{border-color:#8b5cf6;color:#7c3aed;background:#f5f3ff;display:inline-flex;align-items:center;gap:4px;font-size:12px;}
+.compose-tag-btn.autotrack:hover{background:#ede9fe;}
+.compose-tag-btn.autotrack:disabled{opacity:.6;cursor:wait;}
 /* In review mode the parent .choice-btn carries pointer-events:none
    so users can't reselect the answer — but that also blocks the
    vocab-tag inside. Re-enable pointer-events on the tag itself so

@@ -4,6 +4,7 @@
 // from ad.html. Provides a full exam composer matching ad.html's UI.
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { autoTrack, type AutoTrackDict } from "@/lib/autoTrack";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -196,6 +197,77 @@ function BracketBtn({ targetRef, style }: {
     </span>
   );
 }
+
+// ── Auto-track button ──
+// Module-level cache for the dictionary so repeated clicks across
+// every textarea / RichTa share one fetch (5 min TTL).
+let autoTrackDictCache: { data: AutoTrackDict; ts: number } | null = null;
+async function fetchAutoTrackDict(): Promise<AutoTrackDict> {
+  if (autoTrackDictCache && Date.now() - autoTrackDictCache.ts < 5 * 60 * 1000) {
+    return autoTrackDictCache.data;
+  }
+  const session = await sb.auth.getSession();
+  const token = session.data.session?.access_token;
+  const res = await fetch("/api/admin/autotrack", {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`autotrack fetch ${res.status}`);
+  const data = (await res.json()) as AutoTrackDict;
+  autoTrackDictCache = { data, ts: Date.now() };
+  return data;
+}
+
+// Apply autoTrack to either the current selection or the whole textarea
+// value, then push the result back through the native value setter so
+// the controlled <input>/<textarea> picks it up via onChange.
+async function applyAutoTrack(el: HTMLInputElement | HTMLTextAreaElement | null): Promise<void> {
+  if (!el) return;
+  const dict = await fetchAutoTrackDict();
+  const start = el.selectionStart ?? 0;
+  const end   = el.selectionEnd   ?? 0;
+  const val   = el.value;
+  const newVal = (start !== end)
+    ? val.slice(0, start) + autoTrack(val.slice(start, end), dict) + val.slice(end)
+    : autoTrack(val, dict);
+  if (newVal === val) return;
+  const proto = el instanceof HTMLTextAreaElement
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setter?.call(el, newVal);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.focus();
+}
+
+function AutoTrackBtn({ targetRef, style, beforeClick }: {
+  targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  style?: React.CSSProperties;
+  /** Called right before the apply step — RichTa uses it to remember
+   *  the current selection, since clicking the button defocuses the
+   *  textarea. */
+  beforeClick?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className="compose-tag-btn autotrack"
+      title="Auto-track từ vựng và ngữ pháp (bôi đen 1 đoạn để track riêng đoạn đó; không bôi đen sẽ track toàn bộ)"
+      disabled={busy}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={async () => {
+        beforeClick?.();
+        setBusy(true);
+        try { await applyAutoTrack(targetRef.current); }
+        catch (err) { console.warn("[autotrack] failed:", err); }
+        finally { setBusy(false); }
+      }}
+      style={style}
+    >
+      {busy ? "⏳" : "⚡"} Auto-track
+    </button>
+  );
+}
 function Inp({ value, onChange, placeholder, style, noBracketBtn }: {
   value: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties; noBracketBtn?: boolean;
 }) {
@@ -226,9 +298,12 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
   );
   if (noBracketBtn) return ta;
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+    <div style={{ display: "flex", gap: 4, alignItems: "flex-start", flexWrap: "wrap" }}>
       {ta}
-      <BracketBtn targetRef={ref} />
+      <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
+        <BracketBtn targetRef={ref} />
+        <AutoTrackBtn targetRef={ref} />
+      </div>
     </div>
   );
 }
@@ -319,6 +394,10 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           ["〖〗","Đánh dấu từ vựng (review) — bôi đen text rồi bấm để bọc",["〖","〗"]],
           ["〔〕","Đánh dấu ngữ pháp (review) — bôi đen text rồi bấm để bọc",["〔","〕"]],
         ] as [string,string,[string,string]][]).map(([l,t,w]) => toolBtn(l, t, () => insert(w[0], w[1])))}
+        {/* Auto-track scans the textarea for known vocab/grammar
+            surfaces and wraps them. rememberSelection runs first so
+            the user's caret survives the click defocus. */}
+        <AutoTrackBtn targetRef={taRef} beforeClick={rememberSelection} />
         {([
           ["左", "Căn trái", "left"],
           ["中", "Căn giữa", "center"],
