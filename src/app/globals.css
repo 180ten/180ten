@@ -924,13 +924,19 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .audio-script-toggle{border:none;background:none;font-size:12px;color:var(--accent);cursor:pointer;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;font-weight:600;padding:0;}
 .audio-script-toggle:hover{text-decoration:underline;}
 .audio-script-content{padding:8px;border-top:1px solid var(--border);font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
-/* Per-line click-to-seek rows in review-mode script box */
-.script-line{display:flex;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;align-items:flex-start;transition:background .15s;line-height:1.6;}
-.script-line:hover{background:#f0f9ff;}
-.script-line.active{background:#e0f2fe;}
-.script-time{font-size:11px;color:#0284c7;font-family:monospace;min-width:42px;padding-top:2px;flex-shrink:0;}
-.script-text{font-size:14px;color:var(--text);flex:1;}
-.script-text > div{font-size:14px !important;line-height:1.6 !important;}
+
+/* Per-question audio + script (review mode). The wrapper sits below
+   the question header inside the listening section, after the
+   exam-level audio bar at the top of the section. */
+.per-question-audio-wrap{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+.per-question-audio-bar{width:100%;height:40px;border-radius:8px;accent-color:var(--accent);}
+/* Script as flowing paragraph — each sentence is an inline span you
+   can click to seek the matching audioRef. Timestamp lives in the
+   `title` tooltip so the prose isn't visually broken up. */
+.script-paragraph{padding:12px 14px;font-size:15px;line-height:1.9;color:var(--text);font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;border-top:1px solid var(--border);}
+.script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .15s;display:inline;}
+.script-sentence:hover{background:#e0f2fe;}
+.script-sentence.active{background:#bae6fd;font-weight:500;}
 
 /* AudioScriptEditor (admin ComposeTab) — dark variant matching
    admin shell. Uses inline-style colors via vars where available. */

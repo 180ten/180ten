@@ -1149,15 +1149,15 @@ function ListenAudioAndScript({
 
   if (!audioSrc && lines.length === 0) return null;
   return (
-    <>
+    <div className="per-question-audio-wrap">
       {audioSrc && (
-        <div className="audio-bar">
-          <audio
-            ref={audioRef}
-            controls
-            src={encodeAudioUrl(audioSrc)}
-          />
-        </div>
+        <audio
+          ref={audioRef}
+          controls
+          src={encodeAudioUrl(audioSrc)}
+          className="per-question-audio-bar"
+          preload="metadata"
+        />
       )}
       {lines.length > 0 && (
         <div className="audio-script-box">
@@ -1173,25 +1173,23 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            <div className="audio-script-content">
+            <div className="script-paragraph">
               {lines.map((line, idx) => (
-                <div
+                <span
                   key={idx}
-                  className={`script-line${activeLine === idx ? " active" : ""}`}
+                  className={`script-sentence${activeLine === idx ? " active" : ""}`}
                   onClick={() => handleLineClick(idx, line.start)}
+                  title={line.start ? `▶ ${line.start}` : undefined}
                 >
-                  {line.start && <span className="script-time">{line.start}</span>}
-                  <span
-                    className="script-text"
-                    dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(line.text) }}
-                  />
-                </div>
+                  <span dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(line.text) }} />
+                  {idx < lines.length - 1 ? " " : ""}
+                </span>
               ))}
             </div>
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
