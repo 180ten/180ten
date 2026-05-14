@@ -172,7 +172,20 @@ export async function POST(req: Request) {
     if (body.action === "create") {
       const data = pickAllowed(body.payload);
       const { error } = await service.from("vocabulary_library").insert(data);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        // 23505 = unique violation. The DB has UNIQUE (word, reading)
+        // (constraint: vocab_word_reading_unique) — surface a friendly
+        // VN message instead of the raw Postgres text so the admin
+        // knows to use Edit on the existing row.
+        if ((error as { code?: string }).code === "23505") {
+          const w = String(data.word ?? "").trim();
+          const r = String(data.reading ?? "").trim();
+          return NextResponse.json({
+            error: `Từ "${w}"${r ? ` (${r})` : ""} đã tồn tại — hãy tìm và Sửa thay vì Thêm mới.`,
+          }, { status: 409 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
       // Auto-apply any queued pending examples for this new word
       const word = String(data.word ?? "").trim();
       const autoApplied = word ? await applyPendingExamples(service, [word], "vocab") : 0;
@@ -181,8 +194,18 @@ export async function POST(req: Request) {
 
     if (body.action === "update") {
       if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-      const { error } = await service.from("vocabulary_library").update(pickAllowed(body.payload)).eq("id", body.id);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const data = pickAllowed(body.payload);
+      const { error } = await service.from("vocabulary_library").update(data).eq("id", body.id);
+      if (error) {
+        if ((error as { code?: string }).code === "23505") {
+          const w = String(data.word ?? "").trim();
+          const r = String(data.reading ?? "").trim();
+          return NextResponse.json({
+            error: `Đã có từ khác với cùng "${w}"${r ? ` (${r})` : ""} — không thể đổi sang giá trị trùng.`,
+          }, { status: 409 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -198,8 +221,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "rows required" }, { status: 400 });
       }
       const cleaned = body.rows.map(pickAllowed);
-      // onConflict: "word" → upload lại cùng từ sẽ UPDATE thay vì INSERT trùng
-      const { error } = await service.from("vocabulary_library").upsert(cleaned, { onConflict: "word" });
+      // onConflict matches the DB's UNIQUE (word, reading) constraint
+      // so a CSV re-upload with the same (word, reading) updates the
+      // existing row instead of erroring on vocab_word_reading_unique.
+      const { error } = await service.from("vocabulary_library").upsert(cleaned, { onConflict: "word,reading" });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       // Auto-apply pending examples for all words in this batch
       const words = cleaned.map((r) => String(r.word ?? "").trim()).filter(Boolean);
