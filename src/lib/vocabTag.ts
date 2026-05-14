@@ -131,14 +131,16 @@ function writeLocal(cache: LocalCache) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(cache)); } catch { /* quota */ }
 }
 
-async function fetchFromDb(word: string, sb: SupabaseClient): Promise<VocabEntry | null> {
-  const { data, error } = await sb
-    .from("vocabulary_library")
-    .select("word, reading, han_viet, word_type, meaning, examples")
-    .eq("word", word)
-    .maybeSingle();
-  if (error || !data) return null;
-  const row = data as { word: string; reading?: string | null; han_viet?: string | null; word_type?: string | null; meaning?: string | null; examples?: unknown };
+type VocabRow = {
+  word: string;
+  reading?: string | null;
+  han_viet?: string | null;
+  word_type?: string | null;
+  meaning?: string | null;
+  examples?: unknown;
+};
+
+function rowToEntry(row: VocabRow): VocabEntry {
   return {
     word:      row.word,
     reading:   row.reading   ?? null,
@@ -148,6 +150,35 @@ async function fetchFromDb(word: string, sb: SupabaseClient): Promise<VocabEntry
     examples:  row.examples  ?? null,
     cachedAt:  Date.now(),
   };
+}
+
+const VOCAB_COLS = "word, reading, han_viet, word_type, meaning, examples";
+
+// Lookup a single surface form. Tries `word = surface` first; on miss,
+// falls back to `variants @> [surface]` so any inflected form the admin
+// listed maps back to its canonical entry. The cached entry is keyed by
+// the SURFACE (what callers ask for), with `entry.word` carrying the
+// canonical form — so subsequent lookups by either surface or canonical
+// hit the same cached row.
+async function fetchFromDb(surface: string, sb: SupabaseClient): Promise<VocabEntry | null> {
+  // Exact word match
+  const { data: exact, error: exactErr } = await sb
+    .from("vocabulary_library")
+    .select(VOCAB_COLS)
+    .eq("word", surface)
+    .maybeSingle();
+  if (exactErr) return null;
+  if (exact) return rowToEntry(exact as VocabRow);
+
+  // Variant fallback — text[] column, PostgREST `@>` containment.
+  const { data: byVariant } = await sb
+    .from("vocabulary_library")
+    .select(VOCAB_COLS)
+    .contains("variants", [surface])
+    .maybeSingle();
+  if (byVariant) return rowToEntry(byVariant as VocabRow);
+
+  return null;
 }
 
 export async function lookupVocab(word: string, sb: SupabaseClient): Promise<VocabEntry | null> {
@@ -220,9 +251,10 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
 
   if (missing.length === 0) return out;
 
+  // ── Phase 1: bulk match by canonical word (one round-trip) ─────
   const { data, error } = await sb
     .from("vocabulary_library")
-    .select("word, reading, han_viet, word_type, meaning, examples")
+    .select(VOCAB_COLS)
     .in("word", missing);
 
   if (error || !data) {
@@ -230,28 +262,45 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
     return out;
   }
 
-  const found = new Set<string>();
-  for (const row of data as { word: string; reading?: string|null; han_viet?: string|null; word_type?: string|null; meaning?: string|null; examples?: unknown }[]) {
-    const entry: VocabEntry = {
-      word:      row.word,
-      reading:   row.reading   ?? null,
-      han_viet:  row.han_viet  ?? null,
-      word_type: row.word_type ?? null,
-      meaning:   row.meaning   ?? null,
-      examples:  row.examples  ?? null,
-      cachedAt:  Date.now(),
-    };
+  const foundKeys = new Set<string>();
+  for (const row of data as VocabRow[]) {
+    const entry = rowToEntry(row);
     sessionCache.set(row.word, entry);
     out.set(row.word, entry);
-    found.add(row.word);
+    foundKeys.add(row.word);
   }
-  // Cache misses to short-circuit future lookups for words not in the dict
-  for (const m of missing) if (!found.has(m)) sessionCache.set(m, null);
+
+  // ── Phase 2: variant fallback for surfaces still missing ───────
+  // PostgREST doesn't support OR over array containment, so we issue
+  // one tiny query per unmatched surface. Acceptable because most
+  // exam runs have ≤ a handful of inflected forms per question.
+  const stillMissing = missing.filter((m) => !foundKeys.has(m));
+  for (const surface of stillMissing) {
+    const { data: vrow } = await sb
+      .from("vocabulary_library")
+      .select(VOCAB_COLS)
+      .contains("variants", [surface])
+      .maybeSingle();
+    if (vrow) {
+      const entry = rowToEntry(vrow as VocabRow);
+      // Key the cache by the SURFACE so the next lookup of the same
+      // inflected form is an instant cache hit.
+      sessionCache.set(surface, entry);
+      out.set(surface, entry);
+      foundKeys.add(surface);
+    } else {
+      sessionCache.set(surface, null);
+    }
+  }
+
+  // Cache the negative result for canonical words that didn't match
+  // any row in either phase.
+  for (const m of missing) if (!foundKeys.has(m)) sessionCache.set(m, null);
 
   // Persist newly fetched entries to localStorage in one batch
-  if (found.size > 0) {
+  if (foundKeys.size > 0) {
     const next = readLocal();
-    for (const w of found) {
+    for (const w of foundKeys) {
       const e = sessionCache.get(w);
       if (e) next[w] = e;
     }

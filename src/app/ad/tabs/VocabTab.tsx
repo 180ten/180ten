@@ -13,12 +13,39 @@ interface VocabEntry {
   meaning_jp?: string;
   jlpt_level?: string;
   examples?: string[];
+  /** Optional inflection / variant forms — looked up by the in-exam
+   *  vocab popup so 「飲んで」 in a passage maps back to the canonical
+   *  「飲む」 entry. Defaults to [] in DB. */
+  variants?: string[];
 }
 
 type EditingEntry = Partial<VocabEntry> & { examples?: string[] };
 
 const WORD_TYPES = ["名詞","動詞","サ変動詞","形容詞","な形容詞","副詞","助詞","接続詞","感動詞","助動詞","その他"];
 const PAGE_SIZE = 50;
+
+/** Cheap inflection suggestion for common verb endings — just a hint
+ *  text shown when the variants field is empty so admins know what kind
+ *  of forms to type. Not a real conjugator. */
+function suggestVariants(word: string): string {
+  const w = word.trim();
+  if (!w) return "";
+  const last = w.slice(-1);
+  const stem = w.slice(0, -1);
+  switch (last) {
+    case "む": return `${stem}んで, ${stem}みます, ${stem}まない, ${stem}める`;
+    case "ぶ": return `${stem}んで, ${stem}びます, ${stem}ばない`;
+    case "ぬ": return `${stem}んで, ${stem}にます, ${stem}なない`;
+    case "る": return `${stem}て, ${stem}ます, ${stem}ない, ${stem}られる`;
+    case "く": return `${stem}いて, ${stem}きます, ${stem}かない`;
+    case "ぐ": return `${stem}いで, ${stem}ぎます, ${stem}がない`;
+    case "す": return `${stem}して, ${stem}します, ${stem}さない`;
+    case "つ": return `${stem}って, ${stem}ちます, ${stem}たない`;
+    case "う": return `${stem}って, ${stem}います, ${stem}わない`;
+    case "い": return `${stem}くて, ${stem}かった, ${stem}くない`; // i-adj
+    default:   return "";
+  }
+}
 
 function normalizeVocabWordType(raw: string): string | null {
   if (!raw) return null;
@@ -164,7 +191,7 @@ export default function VocabTab() {
     setLoading(true);
     let qb = sb
       .from("vocabulary_library")
-      .select("id,word,reading,han_viet,word_type,meaning,meaning_jp,jlpt_level", { count: "exact" })
+      .select("id,word,reading,han_viet,word_type,meaning,meaning_jp,jlpt_level,variants", { count: "exact" })
       .order("created_at", { ascending: false })
       .order("id", { ascending: true })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -218,7 +245,7 @@ export default function VocabTab() {
     setEditErr("");
     if (!vocab) {
       setEditingId(null);
-      setEditEntry({ word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", jlpt_level: "", examples: [""] });
+      setEditEntry({ word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", jlpt_level: "", examples: [""], variants: [] });
       setEditOpen(true);
       return;
     }
@@ -262,6 +289,7 @@ export default function VocabTab() {
       word_type:  editEntry.word_type || null as unknown as string,
       jlpt_level: editEntry.jlpt_level || null as unknown as string,
       examples:   (editEntry.examples ?? []).filter(Boolean),
+      variants:   (editEntry.variants ?? []).filter(Boolean),
     };
     try {
       if (editingId) {
@@ -662,6 +690,39 @@ export default function VocabTab() {
                   </div>
                 ))}
               </div>
+            </div>
+            {/* Variants — comma-separated inflection / form list. Lookup
+                in src/lib/vocabTag.ts falls back to .contains("variants",
+                [surface]) so any of these forms in a passage opens the
+                popup for the canonical word above. */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 5 }}>
+                Các dạng biến thể <span style={{ textTransform: "none", color: "#777", fontWeight: 500, marginLeft: 4 }}>(cách nhau bằng dấu phẩy)</span>
+              </label>
+              <input
+                type="text"
+                value={(editEntry.variants ?? []).join(", ")}
+                onChange={(e) => setEditEntry((p) => p ? { ...p, variants: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : p)}
+                placeholder="飲んで, 飲みます, 飲まない, 飲める..."
+                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #2a2a2a", background: "#0f0f0f", color: "#e8e8e8", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 13, outline: "none" }}
+              />
+              {(() => {
+                const w = editEntry.word?.trim() ?? "";
+                const noVariants = (editEntry.variants ?? []).length === 0;
+                const hint = noVariants && w ? suggestVariants(w) : "";
+                if (!hint) {
+                  return (
+                    <div style={{ fontSize: 11, color: "#777", marginTop: 5 }}>
+                      Nhập các dạng chia của từ để tự động nhận diện trong đề thi.
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ fontSize: 11, color: "#9ea1ff", marginTop: 5 }}>
+                    💡 Gợi ý cho <strong style={{ color: "#e8e8e8" }}>{w}</strong>: {hint}
+                  </div>
+                );
+              })()}
             </div>
             {editErr && <div id="vf-err" style={{ color: "#E05555", fontSize: 12, marginBottom: 12 }}>{editErr}</div>}
             <div style={{ display: "flex", gap: 10 }}>

@@ -12,7 +12,7 @@ type Body =
 // Allowlist: only these caller-supplied fields ever reach the DB.
 const VOCAB_ALLOWED = new Set([
   "word", "reading", "han_viet", "word_type", "meaning", "meaning_jp",
-  "examples", "jlpt_level",
+  "examples", "jlpt_level", "variants",
 ]);
 
 // ── Helpers cho attach_examples ──────────────────────────────────────────
