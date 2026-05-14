@@ -24,27 +24,62 @@ type EditingEntry = Partial<VocabEntry> & { examples?: string[] };
 const WORD_TYPES = ["名詞","動詞","サ変動詞","形容詞","な形容詞","副詞","助詞","接続詞","感動詞","助動詞","その他"];
 const PAGE_SIZE = 50;
 
-/** Cheap inflection suggestion for common verb endings — just a hint
- *  text shown when the variants field is empty so admins know what kind
- *  of forms to type. Not a real conjugator. */
-function suggestVariants(word: string): string {
+/** Generate conjugation forms for a verb. Special-cases handle
+ *  irregular verbs that don't follow stem-+-ending rules; everything
+ *  else falls through to the godan ending switch. Returns [] for words
+ *  the heuristic can't handle. Not a full conjugator — just enough to
+ *  prefill the variants hint. */
+function generateVerbForms(word: string): string[] {
+  if (word === 'ある') return ['あって','あった','ない','なかった','あります','ありません','あれば','あろう'];
+  if (word === '行く' || word === 'いく') return ['行って','いって','行った','いった','行かない','いかない','行きます','いきます','行ける','いける','行こう','いこう','行けば'];
+  if (word === 'くださる') return ['くださって','くださった','くださいます','くださいません','ください'];
+  if (word === 'いらっしゃる') return ['いらっしゃって','いらっしゃった','いらっしゃいます','いらっしゃいません','いらっしゃい'];
+  if (word === 'なさる') return ['なさって','なさった','なさいます','なさいません','なさい'];
+  if (word === 'おっしゃる') return ['おっしゃって','おっしゃった','おっしゃいます','おっしゃいません'];
+  if (word === 'ございます' || word === 'ござる') return ['ございます','ございません','ございました','ございませんでした'];
+  if (word === 'ない') return ['なくて','なかった','なくない','なくなかった','なくなる','なければ'];
+
   const w = word.trim();
-  if (!w) return "";
+  if (!w) return [];
   const last = w.slice(-1);
   const stem = w.slice(0, -1);
   switch (last) {
-    case "む": return `${stem}んで, ${stem}みます, ${stem}まない, ${stem}める`;
-    case "ぶ": return `${stem}んで, ${stem}びます, ${stem}ばない`;
-    case "ぬ": return `${stem}んで, ${stem}にます, ${stem}なない`;
-    case "る": return `${stem}て, ${stem}ます, ${stem}ない, ${stem}られる`;
-    case "く": return `${stem}いて, ${stem}きます, ${stem}かない`;
-    case "ぐ": return `${stem}いで, ${stem}ぎます, ${stem}がない`;
-    case "す": return `${stem}して, ${stem}します, ${stem}さない`;
-    case "つ": return `${stem}って, ${stem}ちます, ${stem}たない`;
-    case "う": return `${stem}って, ${stem}います, ${stem}わない`;
-    case "い": return `${stem}くて, ${stem}かった, ${stem}くない`; // i-adj
-    default:   return "";
+    case "む": return [`${stem}んで`, `${stem}みます`, `${stem}まない`, `${stem}める`];
+    case "ぶ": return [`${stem}んで`, `${stem}びます`, `${stem}ばない`];
+    case "ぬ": return [`${stem}んで`, `${stem}にます`, `${stem}なない`];
+    case "る": return [`${stem}て`,   `${stem}ます`,   `${stem}ない`, `${stem}られる`];
+    case "く": return [`${stem}いて`, `${stem}きます`, `${stem}かない`];
+    case "ぐ": return [`${stem}いで`, `${stem}ぎます`, `${stem}がない`];
+    case "す": return [`${stem}して`, `${stem}します`, `${stem}さない`];
+    case "つ": return [`${stem}って`, `${stem}ちます`, `${stem}たない`];
+    case "う": return [`${stem}って`, `${stem}います`, `${stem}わない`];
+    default:   return [];
   }
+}
+
+/** Generate conjugation forms for an い-adjective. Special-cases いい
+ *  / 良い (which use よ- stem); everything else applies the regular
+ *  い-stem rules. */
+function generateIAdjectiveForms(word: string): string[] {
+  if (word === 'いい' || word === '良い') return ['よく','よくて','よくない','よくなかった','よかった','よければ','よくなる','よさ'];
+
+  const w = word.trim();
+  if (!w || !w.endsWith('い')) return [];
+  const stem = w.slice(0, -1);
+  return [`${stem}くて`, `${stem}かった`, `${stem}くない`];
+}
+
+/** Hint string shown under the empty variants field — joins whichever
+ *  generator produces something. Verb takes precedence (covers most
+ *  cases); i-adj only fires if verb returns empty. */
+function suggestVariants(word: string): string {
+  const w = word.trim();
+  if (!w) return "";
+  const verbForms = generateVerbForms(w);
+  if (verbForms.length > 0) return verbForms.join(", ");
+  const adjForms = generateIAdjectiveForms(w);
+  if (adjForms.length > 0) return adjForms.join(", ");
+  return "";
 }
 
 function normalizeVocabWordType(raw: string): string | null {
