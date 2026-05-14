@@ -956,29 +956,22 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-preview-content{font-size:14px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;text-align:center;}
 .ase-preview-sentence{display:inline;}
 
-/* ── ComposeTab: AudioDisplayEditor (pill layout) ─────────────────── */
-.ade-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-.ade-toolbar{display:flex;align-items:center;gap:2px;padding:6px 8px;background:var(--bg);border-bottom:1px solid var(--border);}
-.ade-toolbar button{width:30px;height:28px;border:none;background:none;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:center;transition:background .15s;}
-.ade-toolbar button:hover{background:var(--border);}
+/* ── ComposeTab: AudioDisplayEditor (textarea + live overlay) ────── */
+.ade-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--white);}
+.ade-toolbar{display:flex;align-items:center;gap:4px;padding:6px 8px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.ade-tool-btn{width:30px;height:28px;border:none;background:none;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.ade-tool-btn:hover{background:var(--border);}
 .ade-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
-.ade-editor{min-height:80px;padding:12px 14px;font-size:14px;line-height:1.8;font-family:'Noto Sans JP',sans-serif;color:var(--text);outline:none;background:var(--white);cursor:text;}
-.ade-editor:empty::before{content:attr(data-placeholder);color:var(--muted2);pointer-events:none;}
-/* Default block margins on p/div double-space the editor and review;
-   strip them so <br> from defaultParagraphSeparator just moves down a
-   single line. */
-.ade-editor p,.ade-editor div{margin:0;padding:0;}
-/* Chip = editable wrapper + non-editable inner. Wrapper stays
-   editable so the caret can rest before/after the inner; the inner
-   is the visible "chip" with the dashed underline. Keydown guard +
-   onInput scrubber keep typing out of the wrapper gap. */
-.ade-chip-wrapper{display:inline;cursor:text;}
-.ade-chip-inner{display:inline;cursor:default;user-select:none;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;border-bottom:1.5px dashed #0284c7;margin:0;padding:0 0 1px 0;}
-.ade-chip-inner:hover{background:#f0f9ff;border-radius:3px;}
+.ade-chip-btn{padding:3px 10px;border:1px solid #bae6fd;background:#e0f2fe;color:#0284c7;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;font-family:monospace;line-height:1;transition:background .15s,border-color .15s;}
+.ade-chip-btn:hover{background:#bae6fd;border-color:#7dd3fc;}
+.ade-textarea{width:100%;padding:10px 12px;font-size:13px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border:none;border-bottom:1px solid var(--border);outline:none;resize:vertical;color:var(--muted);background:#fafafa;box-sizing:border-box;display:block;}
+.ade-textarea:focus{color:var(--text);background:var(--white);}
+.ade-overlay-label{padding:6px 12px 0;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.ade-overlay{padding:8px 14px 14px;font-size:14px;line-height:1.8;font-family:'Noto Sans JP',sans-serif;background:var(--white);min-height:50px;color:var(--text);white-space:pre-wrap;}
+.ade-chip-display{border-bottom:1.5px dashed #0284c7;color:var(--text);cursor:default;padding-bottom:1px;}
 
 /* Review-mode rendering of audio_display HTML */
 .audio-display-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;border-top:1px solid var(--border);white-space:pre-wrap;}
-.audio-display-content p,.audio-display-content div{margin:0;padding:0;}
 .audio-display-content .script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .15s;}
 .audio-display-content .script-sentence:hover{background:#e0f2fe;}
 

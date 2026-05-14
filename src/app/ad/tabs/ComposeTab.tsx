@@ -5,7 +5,10 @@
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { autoTrack, type AutoTrackDict } from "@/lib/autoTrack";
-import { parseScriptLines, type AudioScriptLine } from "@/lib/audioScript";
+import {
+  parseScriptLines, htmlToAudioDisplayTemplate, renderAudioDisplayTemplate,
+  type AudioScriptLine,
+} from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -1200,182 +1203,109 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
-// ContentEditable layout editor for the audio_display column. Each
-// row in the timestamp table maps to one chip:
-//   <span class="ade-chip-wrapper" data-sentence="N">
-//     <span class="ade-chip-inner" contenteditable="false">…</span>
-//   </span>
-// The wrapper stays editable so the caret can land before/after the
-// non-editable inner without browsers collapsing the surrounding
-// caret stops (which is what plain contenteditable=false leaf chips
-// did, breaking arrow-key navigation past chip 1). The keydown guard
-// + input scrubber below stop admins from typing into the wrapper
-// gap, so the chip's text remains a faithful mirror of the table.
+// audio_display layout editor — textarea + live overlay.
+//
+// We tried a contentEditable approach where chips were
+// contenteditable=false spans inside an editable div, but browsers
+// kept collapsing the caret stops adjacent to the chips, so arrow-key
+// navigation skipped positions and Enter landed in the wrong slot.
+// The textarea avoids that entire class of bug: admins type plain
+// text with `《N》` placeholders pointing at sentence rows, and the
+// overlay below renders the prettified version live.
 function AudioDisplayEditor({
   lines, value, onChange,
 }: {
   lines: AudioScriptLine[];
   value: string;
-  onChange: (html: string) => void;
+  onChange: (text: string) => void;
 }) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  // Effect-stable handle to onChange — depending on it directly would
-  // force the sync effect to rerun on every parent render, since the
-  // listen forms hand a fresh closure each time.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Effect-stable handle to onChange so the seed/sync effects don't
+  // re-run on every parent render (the listen forms hand a fresh
+  // closure each time).
   const onChangeRef = useRef(onChange);
   useEffect(() => { onChangeRef.current = onChange; });
 
-  // Seed once on mount; ongoing DOM updates come from typing + the
-  // pill-sync effect below. Re-applying `value` on every change would
-  // steal caret position.
-  //
-  // Force `Enter` to emit a single <br> instead of wrapping the line
-  // in <div>/<p> — keeps spacing tight and predictable around chips.
+  // First mount: migrate legacy HTML saves to the placeholder format,
+  // or seed a default inline template if value is empty + the table
+  // already has rows.
   useEffect(() => {
-    const el = editorRef.current;
-    if (el && el.innerHTML !== (value ?? "")) {
-      el.innerHTML = value ?? "";
+    const cur = String(value ?? "");
+    if (cur && /data-sentence|<br|<(p|div)\b/i.test(cur)) {
+      onChangeRef.current(htmlToAudioDisplayTemplate(cur));
+      return;
     }
-    try { document.execCommand("defaultParagraphSeparator", false, "br"); } catch { /* ignore */ }
+    if (!cur && lines.length > 0) {
+      onChangeRef.current(lines.map((_, i) => `《${i}》`).join(""));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Chip sync — runs whenever the timestamp table mutates.
-  //  - Strip wrappers whose row no longer exists.
-  //  - Append wrappers for rows that aren't represented yet.
-  //  - Refresh inner text + tooltip so they track live row edits.
+  // Sync placeholders to row count: drop any《N》whose row no longer
+  // exists, then append placeholders for rows that aren't already
+  // represented somewhere in the template.
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    let mutated = false;
-
-    const existing = Array.from(
-      editor.querySelectorAll<HTMLElement>(".ade-chip-wrapper[data-sentence]"),
+    const cur = String(value ?? "");
+    if (!cur) return; // initial seed handles the empty case
+    let next = cur.replace(/《(\d+)》/g, (m, n: string) =>
+      parseInt(n, 10) >= lines.length ? "" : m,
     );
-    existing.forEach((wrap) => {
-      const idx = parseInt(wrap.getAttribute("data-sentence") ?? "-1", 10);
-      if (idx < 0 || idx >= lines.length) {
-        wrap.remove();
-        mutated = true;
-      }
+    lines.forEach((_, i) => {
+      if (!next.includes(`《${i}》`)) next += `《${i}》`;
     });
+    if (next !== cur) onChangeRef.current(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.length]);
 
-    lines.forEach((line, idx) => {
-      let wrap = editor.querySelector<HTMLElement>(
-        `.ade-chip-wrapper[data-sentence="${idx}"]`,
-      );
-      const text = line?.text ?? "";
-      const tip  = line?.start ? `▶ ${line.start}` : "";
-      if (!wrap) {
-        wrap = document.createElement("span");
-        wrap.setAttribute("data-sentence", String(idx));
-        wrap.className = "ade-chip-wrapper";
-        const inner = document.createElement("span");
-        inner.className = "ade-chip-inner";
-        inner.setAttribute("contenteditable", "false");
-        inner.textContent = text;
-        if (tip) inner.title = tip;
-        wrap.appendChild(inner);
-        editor.appendChild(wrap);
-        mutated = true;
-      } else {
-        const inner = wrap.querySelector<HTMLElement>(".ade-chip-inner");
-        if (inner) {
-          if (inner.textContent !== text) {
-            inner.textContent = text;
-            mutated = true;
-          }
-          if (inner.title !== tip) inner.title = tip;
-        }
-      }
+  const insertAtCursor = (insert: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end   = el.selectionEnd;
+    const cur = String(value ?? "");
+    const next = cur.slice(0, start) + insert + cur.slice(end);
+    onChange(next);
+    // Restore caret AFTER React flushes the new value into the
+    // textarea — selection writes before that get clobbered.
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + insert.length;
+      el.selectionStart = el.selectionEnd = pos;
     });
-
-    if (mutated) onChangeRef.current(editor.innerHTML);
-  }, [lines]);
-
-  // Block printable input while the caret is inside a chip wrapper —
-  // wrapper is editable (so the caret can land beside the inner) but
-  // we don't want admins typing in that gap. Modifier combos pass
-  // through so Cmd-A / Cmd-C / etc. still work.
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const node = sel.getRangeAt(0).commonAncestorContainer;
-    const el = node.nodeType === Node.ELEMENT_NODE
-      ? (node as HTMLElement)
-      : node.parentElement;
-    if (!el?.closest(".ade-chip-wrapper")) return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const navKeys = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End","Tab","Escape","Shift"];
-    if (navKeys.includes(e.key)) return;
-    e.preventDefault();
   };
 
-  // Belt-and-braces: even with the keydown guard, IME / paste / drag
-  // can deposit stray text inside a chip wrapper. Strip any text
-  // node that appears as a direct child of `.ade-chip-wrapper` so
-  // the chip stays a single inner span.
-  const handleInput: React.FormEventHandler<HTMLDivElement> = () => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.querySelectorAll<HTMLElement>(".ade-chip-wrapper").forEach((wrap) => {
-      Array.from(wrap.childNodes).forEach((n) => {
-        if (n.nodeType === Node.TEXT_NODE) n.parentNode?.removeChild(n);
-      });
-    });
-    onChange(editor.innerHTML);
-  };
-
-  const execCmd = (cmd: string, val?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(cmd, false, val);
-    onChange(editorRef.current?.innerHTML ?? "");
-  };
-
-  // Insert a single <br> at the caret instead of execCommand's
-  // insertParagraph (which wraps in <p>/<div> and visually doubles
-  // the gap because of default block margins).
-  const insertLineBreak = () => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.focus();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) {
-      editor.appendChild(document.createElement("br"));
-      onChange(editor.innerHTML);
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    const br = document.createElement("br");
-    range.insertNode(br);
-    range.setStartAfter(br);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    onChange(editor.innerHTML);
-  };
+  const overlayHtml = useMemo(
+    () => renderAudioDisplayTemplate(String(value ?? ""), lines, "preview"),
+    [value, lines],
+  );
 
   return (
     <div className="ade-wrap">
       <div className="ade-toolbar">
-        <button type="button" onClick={() => execCmd("justifyLeft")}   title="Căn trái">⬅</button>
-        <button type="button" onClick={() => execCmd("justifyCenter")} title="Căn giữa">↔</button>
-        <button type="button" onClick={() => execCmd("justifyRight")}  title="Căn phải">➡</button>
-        <div className="ade-sep" />
-        <button type="button" onClick={insertLineBreak} title="Xuống dòng">↵</button>
+        <button type="button" className="ade-tool-btn" onClick={() => insertAtCursor("\t")} title="Tab">⇥</button>
+        <button type="button" className="ade-tool-btn" onClick={() => insertAtCursor("\n")} title="Xuống dòng">↵</button>
+        {lines.length > 0 && <div className="ade-sep" />}
+        {lines.map((line, i) => (
+          <button
+            key={i}
+            type="button"
+            className="ade-chip-btn"
+            onClick={() => insertAtCursor(`《${i}》`)}
+            title={(line.text ?? "").slice(0, 60)}
+          >S{i + 1}</button>
+        ))}
       </div>
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        className="ade-editor"
-        onKeyDown={handleKeyDown}
-        onInput={handleInput}
-        // Browsers don't honour `placeholder` on contentEditable; the
-        // CSS uses :empty::before to fake it from this attribute.
-        data-placeholder="Câu thật từ bảng tự xuất hiện ở đây. Sắp xếp + căn lề + Enter xuống dòng tùy ý."
+      <textarea
+        ref={textareaRef}
+        className="ade-textarea"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={4}
+        placeholder="Vị trí chips: 《0》《1》《2》... | Enter để xuống dòng | Bấm S1/S2 để chèn lại"
+        spellCheck={false}
       />
+      <div className="ade-overlay-label">👁 Preview</div>
+      <div className="ade-overlay" dangerouslySetInnerHTML={{ __html: overlayHtml }} />
     </div>
   );
 }
@@ -1390,7 +1320,7 @@ function AudioDisplayField({ data, onChange }: { data: QData; onChange: (d: QDat
   return (
     <Fl
       label="🎨 Trình bày script (hiển thị trong review)"
-      hint="Câu thật từ bảng đồng bộ tự động (gạch chân đứt = không edit). Admin chỉ căn lề + Enter xuống dòng — review hiển thị bố cục này và bật click-to-seek."
+      hint="Soạn bố cục bằng placeholder 《0》《1》... ở textarea bên dưới. Bấm S1/S2/... để chèn lại nếu lỡ xoá. Preview ngay bên dưới — review hiển thị y hệt và bật click-to-seek."
     >
       <AudioDisplayEditor
         lines={lines}

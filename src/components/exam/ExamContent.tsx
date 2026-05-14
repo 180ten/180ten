@@ -15,7 +15,11 @@ import {
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
 import { extractGrammarSegments, stripGrammarTags, lookupGrammar, prefetchGrammar } from "@/lib/grammarTag";
-import { parseScriptLines, parseTimecode, type AudioScriptLine } from "@/lib/audioScript";
+import {
+  parseScriptLines, parseTimecode,
+  htmlToAudioDisplayTemplate, renderAudioDisplayTemplate,
+  type AudioScriptLine,
+} from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -1129,26 +1133,14 @@ function ReadingContent({
 // transcript. Only rendered in review mode. Each parent listen
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
-// Swap each chip wrapper in the editor HTML for a clickable
-// sentence span, then sanitise. Wrappers whose row was deleted are
-// dropped silently — saved layouts can outlive the table.
-function renderAudioDisplay(html: string, lines: AudioScriptLine[]): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  // Match the wrapper class explicitly so we don't accidentally swap
-  // the inner span (which carries no data-sentence) or any future
-  // unrelated data-sentence attribute the editor might grow.
-  doc.querySelectorAll<HTMLElement>(".ade-chip-wrapper[data-sentence]").forEach((wrap) => {
-    const idx = parseInt(wrap.getAttribute("data-sentence") ?? "-1", 10);
-    const line = idx >= 0 ? lines[idx] : undefined;
-    if (!line) { wrap.remove(); return; }
-    const span = doc.createElement("span");
-    span.className = "script-sentence";
-    span.setAttribute("data-seek-idx", String(idx));
-    if (line.start) span.setAttribute("title", `▶ ${line.start}`);
-    span.innerHTML = sanitizedRenderRichInline(line.text);
-    wrap.replaceWith(span);
-  });
-  return sanitizeAudioDisplay(doc.body.innerHTML);
+// Render the audio_display template into review HTML. Legacy saves
+// were HTML (chip wrappers + <br>); we migrate them on the fly so
+// existing data still renders. New saves arrive as `《N》` templates.
+function renderAudioDisplay(raw: string, lines: AudioScriptLine[]): string {
+  const template = /data-sentence|<br|<(p|div)\b/i.test(raw)
+    ? htmlToAudioDisplayTemplate(raw)
+    : raw;
+  return sanitizeAudioDisplay(renderAudioDisplayTemplate(template, lines, "review"));
 }
 
 function ListenAudioAndScript({
