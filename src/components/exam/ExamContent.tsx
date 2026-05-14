@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
   renderQText, renderChoiceText,
-  sanitizeHtml, sanitizedRenderRich, sanitizedRenderRichInline, sanitizeAudioDisplay,
+  sanitizeHtml, sanitizedRenderRich, sanitizedRenderRichInline,
   buildMondaiHeader, buildBjtSectionHeader, bjtPartLabel,
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
@@ -15,11 +15,7 @@ import {
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
 import { extractGrammarSegments, stripGrammarTags, lookupGrammar, prefetchGrammar } from "@/lib/grammarTag";
-import {
-  parseScriptLines, parseTimecode,
-  htmlToAudioDisplayTemplate, renderAudioDisplayTemplate,
-  type AudioScriptLine,
-} from "@/lib/audioScript";
+import { parseScriptLines, parseTimecode, type AudioScriptLine } from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -1133,22 +1129,11 @@ function ReadingContent({
 // transcript. Only rendered in review mode. Each parent listen
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
-// Render the audio_display template into review HTML. Legacy saves
-// were HTML (chip wrappers + <br>); we migrate them on the fly so
-// existing data still renders. New saves arrive as `《N》` templates.
-function renderAudioDisplay(raw: string, lines: AudioScriptLine[]): string {
-  const template = /data-sentence|<br|<(p|div)\b/i.test(raw)
-    ? htmlToAudioDisplayTemplate(raw)
-    : raw;
-  return sanitizeAudioDisplay(renderAudioDisplayTemplate(template, lines, "review"));
-}
-
 function ListenAudioAndScript({
-  audioSrc, lines, audioDisplay,
+  audioSrc, lines,
 }: {
   audioSrc: string | null;
   lines: AudioScriptLine[];
-  audioDisplay: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -1162,14 +1147,7 @@ function ListenAudioAndScript({
     setActiveLine(idx);
   }
 
-  const hasDisplay = !!(audioDisplay && audioDisplay.trim());
-  // Prerender the rich layout once per (html, lines) pair so click
-  // handling doesn't trigger a re-parse on every render.
-  const displayHtml = useMemo(
-    () => (hasDisplay ? renderAudioDisplay(audioDisplay!, lines) : ""),
-    [hasDisplay, audioDisplay, lines],
-  );
-  if (!audioSrc && lines.length === 0 && !hasDisplay) return null;
+  if (!audioSrc && lines.length === 0) return null;
   return (
     <div className="per-question-audio-wrap">
       {audioSrc && (
@@ -1181,7 +1159,7 @@ function ListenAudioAndScript({
           preload="metadata"
         />
       )}
-      {(lines.length > 0 || hasDisplay) && (
+      {lines.length > 0 && (
         <div className="audio-script-box">
           <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
             <span>📝 Script</span>
@@ -1195,36 +1173,21 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            hasDisplay ? (
-              <div
-                className="audio-display-content"
-                dangerouslySetInnerHTML={{ __html: displayHtml }}
-                onClick={(e) => {
-                  // Event delegation — the inner spans don't get React
-                  // handlers because they came from dangerouslySetInnerHTML.
-                  const tgt = (e.target as HTMLElement).closest<HTMLElement>("[data-seek-idx]");
-                  if (!tgt) return;
-                  const idx = parseInt(tgt.getAttribute("data-seek-idx") ?? "-1", 10);
-                  if (idx >= 0 && lines[idx]) handleLineClick(idx, lines[idx].start);
-                }}
-              />
-            ) : (
-              <div className="script-paragraph">
-                {lines.map((line, idx) => (
-                  <span
-                    key={idx}
-                    className={`script-sentence${activeLine === idx ? " active" : ""}`}
-                    onClick={() => handleLineClick(idx, line.start)}
-                    title={line.start ? `▶ ${line.start}` : undefined}
-                    // sanitizedRenderRich emits a wrapping <div> (block) —
-                    // would force every sentence onto its own line. The
-                    // *Inline variant skips the wrapper while keeping
-                    // furigana / vocab / grammar tag rendering intact.
-                    dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
-                  />
-                ))}
-              </div>
-            )
+            <div className="script-paragraph">
+              {lines.map((line, idx) => (
+                <span
+                  key={idx}
+                  className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                  onClick={() => handleLineClick(idx, line.start)}
+                  title={line.start ? `▶ ${line.start}` : undefined}
+                  // sanitizedRenderRich emits a wrapping <div> (block) —
+                  // would force every sentence onto its own line. The
+                  // *Inline variant skips the wrapper while keeping
+                  // furigana / vocab / grammar tag rendering intact.
+                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -1320,17 +1283,12 @@ function ListeningContent({
         (typeof (q as { audioScript?: unknown }).audioScript === "string" && (q as { audioScript: string }).audioScript) ||
         null;
       const lines: AudioScriptLine[] = parseScriptLines(scriptRaw);
-      const audioDisplay =
-        (typeof (q as { audio_display?: unknown }).audio_display === "string" && (q as { audio_display: string }).audio_display) ||
-        (typeof (q as { audioDisplay?: unknown }).audioDisplay === "string" && (q as { audioDisplay: string }).audioDisplay) ||
-        null;
-      if (perQAudio || lines.length > 0 || (audioDisplay && audioDisplay.trim())) {
+      if (perQAudio || lines.length > 0) {
         elems.push(
           <ListenAudioAndScript
             key={`${id}-audio-script`}
             audioSrc={perQAudio}
             lines={lines}
-            audioDisplay={audioDisplay}
           />,
         );
       }

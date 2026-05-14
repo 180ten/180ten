@@ -131,20 +131,6 @@ export function sanitizedRenderRichInline(t: string): string {
   return sanitizeHtml(renderRichInline(t));
 }
 
-/** Sanitiser for the audio_display HTML rendered in review. The
- *  content has already had its placeholder pills swapped for
- *  `<span data-seek-idx="N" class="script-sentence">…</span>`, so the
- *  attribute allowlist needs to include data-seek-idx (click target)
- *  and title (timecode tooltip). Tag list covers what execCommand
- *  emits plus the ruby tags renderRichInline can produce. */
-const AUDIO_DISPLAY_SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ["p", "div", "span", "br", "b", "strong", "i", "em", "u", "ruby", "rt", "rp"],
-  ALLOWED_ATTR: ["style", "class", "title", "data-seek-idx"],
-};
-export function sanitizeAudioDisplay(html: string): string {
-  if (!html) return "";
-  return DOMPurify.sanitize(html, AUDIO_DISPLAY_SANITIZE_CONFIG);
-}
 
 /** (text) → blue underline — kanji, iikae, hyouki */
 export function renderQBlue(t: string): string {

@@ -17,7 +17,7 @@ const EXAM_ALLOWED = new Set([
 ]);
 const QUESTION_ALLOWED = new Set([
   "id", "exam_id", "type", "level", "order_index", "data",
-  "audio_url", "audio_script", "audio_display",
+  "audio_url", "audio_script",
 ]);
 function pickAllowed<T extends Record<string, unknown>>(input: T, allowed: Set<string>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

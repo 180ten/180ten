@@ -5,10 +5,7 @@
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { autoTrack, type AutoTrackDict } from "@/lib/autoTrack";
-import {
-  parseScriptLines, htmlToAudioDisplayTemplate, renderAudioDisplayTemplate,
-  type AudioScriptLine,
-} from "@/lib/audioScript";
+import { parseScriptLines, type AudioScriptLine } from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -1161,20 +1158,6 @@ function AudioScriptEditor({
           >×</button>
         </div>
       ))}
-      {lines.some((l) => l.text.trim()) && (
-        <div className="ase-preview">
-          <div className="ase-preview-label">👁 Preview</div>
-          <div className="ase-preview-content">
-            {lines
-              .filter((l) => l.text.trim())
-              .map((line, idx) => (
-                <span key={idx} className="ase-preview-sentence">
-                  {line.text}
-                </span>
-              ))}
-          </div>
-        </div>
-      )}
       <button type="button" className="ase-btn-add" onClick={addLine}>
         + Thêm dòng
       </button>
@@ -1203,134 +1186,6 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
-// audio_display layout editor — textarea + live overlay.
-//
-// We tried a contentEditable approach where chips were
-// contenteditable=false spans inside an editable div, but browsers
-// kept collapsing the caret stops adjacent to the chips, so arrow-key
-// navigation skipped positions and Enter landed in the wrong slot.
-// The textarea avoids that entire class of bug: admins type plain
-// text with `《N》` placeholders pointing at sentence rows, and the
-// overlay below renders the prettified version live.
-function AudioDisplayEditor({
-  lines, value, onChange,
-}: {
-  lines: AudioScriptLine[];
-  value: string;
-  onChange: (text: string) => void;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Effect-stable handle to onChange so the seed/sync effects don't
-  // re-run on every parent render (the listen forms hand a fresh
-  // closure each time).
-  const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; });
-
-  // First mount: migrate legacy HTML saves to the placeholder format,
-  // or seed a default inline template if value is empty + the table
-  // already has rows.
-  useEffect(() => {
-    const cur = String(value ?? "");
-    if (cur && /data-sentence|<br|<(p|div)\b/i.test(cur)) {
-      onChangeRef.current(htmlToAudioDisplayTemplate(cur));
-      return;
-    }
-    if (!cur && lines.length > 0) {
-      onChangeRef.current(lines.map((_, i) => `《${i}》`).join(""));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Sync placeholders to row count: drop any《N》whose row no longer
-  // exists, then append placeholders for rows that aren't already
-  // represented somewhere in the template.
-  useEffect(() => {
-    const cur = String(value ?? "");
-    if (!cur) return; // initial seed handles the empty case
-    let next = cur.replace(/《(\d+)》/g, (m, n: string) =>
-      parseInt(n, 10) >= lines.length ? "" : m,
-    );
-    lines.forEach((_, i) => {
-      if (!next.includes(`《${i}》`)) next += `《${i}》`;
-    });
-    if (next !== cur) onChangeRef.current(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines.length]);
-
-  const insertAtCursor = (insert: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end   = el.selectionEnd;
-    const cur = String(value ?? "");
-    const next = cur.slice(0, start) + insert + cur.slice(end);
-    onChange(next);
-    // Restore caret AFTER React flushes the new value into the
-    // textarea — selection writes before that get clobbered.
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + insert.length;
-      el.selectionStart = el.selectionEnd = pos;
-    });
-  };
-
-  const overlayHtml = useMemo(
-    () => renderAudioDisplayTemplate(String(value ?? ""), lines, "preview"),
-    [value, lines],
-  );
-
-  return (
-    <div className="ade-wrap">
-      <div className="ade-toolbar">
-        <button type="button" className="ade-tool-btn" onClick={() => insertAtCursor("\t")} title="Tab">⇥</button>
-        <button type="button" className="ade-tool-btn" onClick={() => insertAtCursor("\n")} title="Xuống dòng">↵</button>
-        {lines.length > 0 && <div className="ade-sep" />}
-        {lines.map((line, i) => (
-          <button
-            key={i}
-            type="button"
-            className="ade-chip-btn"
-            onClick={() => insertAtCursor(`《${i}》`)}
-            title={(line.text ?? "").slice(0, 60)}
-          >S{i + 1}</button>
-        ))}
-      </div>
-      <textarea
-        ref={textareaRef}
-        className="ade-textarea"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={4}
-        placeholder="Vị trí chips: 《0》《1》《2》... | Enter để xuống dòng | Bấm S1/S2 để chèn lại"
-        spellCheck={false}
-      />
-      <div className="ade-overlay-label">👁 Preview</div>
-      <div className="ade-overlay" dangerouslySetInnerHTML={{ __html: overlayHtml }} />
-    </div>
-  );
-}
-
-function AudioDisplayField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
-  // Reuse the same parsed lines AudioScriptField sees so the pill-sync
-  // effect runs on a stable reference (not a new array per render).
-  const lines = useMemo(
-    () => parseScriptLines(typeof data.audioScript === "string" ? data.audioScript : null),
-    [data.audioScript],
-  );
-  return (
-    <Fl
-      label="🎨 Trình bày script (hiển thị trong review)"
-      hint="Soạn bố cục bằng placeholder 《0》《1》... ở textarea bên dưới. Bấm S1/S2/... để chèn lại nếu lỡ xoá. Preview ngay bên dưới — review hiển thị y hệt và bật click-to-seek."
-    >
-      <AudioDisplayEditor
-        lines={lines}
-        value={typeof data.audioDisplay === "string" ? data.audioDisplay : ""}
-        onChange={(html) => onChange({ ...data, audioDisplay: html })}
-      />
-    </Fl>
-  );
-}
-
 function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
@@ -1350,7 +1205,6 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
-      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1392,7 +1246,6 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
-      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1440,7 +1293,6 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
-      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
         {isN1OrN2Level(level) && (
@@ -2025,17 +1877,15 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
       // top-level columns. data.audioUrl / data.audioScript stay in
       // the JSONB body so the load flow can spread them back into the
       // editor without an extra read path.
-      const audioUrl     = typeof q.audioUrl     === "string" ? q.audioUrl     : null;
-      const audioScript  = typeof q.audioScript  === "string" ? q.audioScript  : null;
-      const audioDisplay = typeof q.audioDisplay === "string" ? q.audioDisplay : null;
+      const audioUrl    = typeof q.audioUrl    === "string" ? q.audioUrl    : null;
+      const audioScript = typeof q.audioScript === "string" ? q.audioScript : null;
       return {
         id: q.id, exam_id: exam.id, type: q.type,
         level: q.level || exam.level,
         order_index: q.order_index ?? i,
         data: q,
-        audio_url:     audioUrl     || null,
-        audio_script:  audioScript  || null,
-        audio_display: audioDisplay || null,
+        audio_url:    audioUrl    || null,
+        audio_script: audioScript || null,
       };
     });
     try {
@@ -2385,9 +2235,8 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
           ...data,
           id: String(q.id), type: String(q.type), level: String(q.level||examData.level||""),
           order_index: Number(q.order_index ?? 0),
-          audioUrl:     typeof top.audio_url     === "string" && top.audio_url     ? top.audio_url     : (data.audioUrl     ?? ""),
-          audioScript:  typeof top.audio_script  === "string" && top.audio_script  ? top.audio_script  : (data.audioScript  ?? ""),
-          audioDisplay: typeof top.audio_display === "string" && top.audio_display ? top.audio_display : (data.audioDisplay ?? ""),
+          audioUrl:    typeof top.audio_url    === "string" && top.audio_url    ? top.audio_url    : (data.audioUrl    ?? ""),
+          audioScript: typeof top.audio_script === "string" && top.audio_script ? top.audio_script : (data.audioScript ?? ""),
         } as ComposeQuestion;
       });
       setExam({
