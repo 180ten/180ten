@@ -451,7 +451,7 @@ function VocabTagPopup({
                 <button type="button" className="cp-expand-btn" onClick={() => setExpanded((v) => !v)}>
                   {expanded ? "Rút gọn" : "Xem thêm"}
                   <img
-                    src="/svg/angle-down.svg"
+                    src={kind === "grammar" ? "/svg/caret-grammar.svg" : "/svg/caret-vocab.svg"}
                     alt=""
                     aria-hidden
                     width={11}
