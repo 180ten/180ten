@@ -1249,12 +1249,6 @@ function AudioDisplayEditor({
     existingPills.forEach((pill) => {
       const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
       if (idx < 0 || idx >= lines.length) {
-        // Drop the trailing ZWSP we inserted after this chip so the
-        // editor doesn't accumulate orphan separators.
-        const next = pill.nextSibling;
-        if (next && next.nodeType === Node.TEXT_NODE && next.nodeValue === "​") {
-          next.parentNode?.removeChild(next);
-        }
         pill.remove();
         mutated = true;
       }
@@ -1270,15 +1264,13 @@ function AudioDisplayEditor({
         chip.setAttribute("contenteditable", "false");
         chip.className = "ade-chip";
         chip.textContent = text;
-        // Flank chips with zero-width spaces so the caret has a
-        // landing spot on either side. contentEditable refuses to
-        // place the cursor adjacent to a contenteditable=false node
-        // sitting at the start/end of a block, otherwise.
-        if (editor.childNodes.length === 0) {
-          editor.appendChild(document.createTextNode("​"));
-        }
+        // Append the chip directly. Earlier we flanked chips with
+        // zero-width spaces so the caret would sit beside them, but
+        // those extra text nodes turned arrow-key navigation into
+        // multi-step jumps and made Enter land in the wrong slot.
+        // The CSS `cursor:text` on the editor + zero-padding on the
+        // chip keeps the click-to-place-cursor behaviour intact.
         editor.appendChild(chip);
-        editor.appendChild(document.createTextNode("​"));
         mutated = true;
       } else if (chip.textContent !== text) {
         // Live-edit in the timestamp table reflects in the layout
@@ -1313,11 +1305,11 @@ function AudioDisplayEditor({
       return;
     }
     const range = sel.getRangeAt(0);
-    const br = document.createElement("br");
     range.deleteContents();
+    const br = document.createElement("br");
     range.insertNode(br);
     range.setStartAfter(br);
-    range.setEndAfter(br);
+    range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
     onChange(editor.innerHTML);
