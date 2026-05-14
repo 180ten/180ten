@@ -956,6 +956,18 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-preview-content{font-size:14px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;text-align:center;}
 .ase-preview-sentence{display:inline;}
 
+/* ── ComposeTab: AudioDisplayEditor (rich-text contentEditable) ──── */
+.ade-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.ade-toolbar{display:flex;align-items:center;gap:2px;padding:6px 8px;background:var(--bg);border-bottom:1px solid var(--border);}
+.ade-toolbar button{width:30px;height:28px;border:none;background:none;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.ade-toolbar button:hover{background:var(--border);}
+.ade-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+.ade-editor{min-height:100px;padding:12px 14px;font-size:14px;line-height:1.8;font-family:'Noto Sans JP',sans-serif;color:var(--text);outline:none;background:var(--white);}
+.ade-editor:empty::before{content:attr(data-placeholder);color:var(--muted2);pointer-events:none;}
+
+/* Review-mode rendering of audio_display HTML */
+.audio-display-content{padding:14px;font-size:15px;line-height:1.9;color:var(--text);font-family:'Noto Sans JP',sans-serif;border-top:1px solid var(--border);}
+
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
 .compose-tag-btn.vocab{border-color:#f97316;color:#f97316;background:#fff8f5;}

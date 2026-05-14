@@ -82,7 +82,7 @@ function getCachedExamData(
 
       const { data: rows, error: qErr } = await sb
         .from("questions")
-        .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
+        .select("id,exam_id,type,level,order_index,data,audio_url,audio_script,audio_display")
         .eq("exam_id", examId)
         .order("order_index", { ascending: true });
       if (qErr) throw new Error(qErr.message);

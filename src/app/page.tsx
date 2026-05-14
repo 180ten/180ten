@@ -414,8 +414,9 @@ export default function Home() {
       type: row.type,
       level: row.level,
       order_index: row.order_index,
-      audio_url:    (row as { audio_url?: string | null }).audio_url    ?? null,
-      audio_script: (row as { audio_script?: string | null }).audio_script ?? null,
+      audio_url:     (row as { audio_url?: string | null }).audio_url        ?? null,
+      audio_script:  (row as { audio_script?: string | null }).audio_script  ?? null,
+      audio_display: (row as { audio_display?: string | null }).audio_display ?? null,
     })) as unknown as import("@/hooks/useExam").Question[];
 
     const readQs   = qs.filter((q) => !String((q as unknown as Record<string,unknown>).type ?? "").startsWith("listen"));

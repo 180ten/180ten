@@ -131,6 +131,19 @@ export function sanitizedRenderRichInline(t: string): string {
   return sanitizeHtml(renderRichInline(t));
 }
 
+/** Sanitiser for the contentEditable AudioDisplay editor (ComposeTab).
+ *  execCommand emits <p>, <div>, <b>, <strong>, <i>, <em>, <br> and
+ *  paragraph-level `style="text-align:..."`. Wider than the renderer
+ *  allowlist but still strips scripts/handlers/javascript: URIs. */
+const AUDIO_DISPLAY_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ["p", "div", "span", "br", "b", "strong", "i", "em", "u", "ruby", "rt", "rp"],
+  ALLOWED_ATTR: ["style", "class"],
+};
+export function sanitizeAudioDisplay(html: string): string {
+  if (!html) return "";
+  return DOMPurify.sanitize(html, AUDIO_DISPLAY_SANITIZE_CONFIG);
+}
+
 /** (text) → blue underline — kanji, iikae, hyouki */
 export function renderQBlue(t: string): string {
   if (!t) return '';

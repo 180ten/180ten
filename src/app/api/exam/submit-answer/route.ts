@@ -118,7 +118,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // 3) Fetch question (service role bypasses RLS)
   const { data: row, error: qErr } = await sb
     .from("questions")
-    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
+    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script,audio_display")
     .eq("id", question_id)
     .eq("exam_id", exam_id)
     .maybeSingle();
@@ -128,7 +128,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const { data: scopeRows, error: scopeErr } = await sb
     .from("questions")
-    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script")
+    .select("id,exam_id,type,level,order_index,data,audio_url,audio_script,audio_display")
     .eq("exam_id", exam_id);
   if (scopeErr) return jsonError(500, scopeErr.message);
   const posMap = buildBalancedPositionMapForQuestions((scopeRows ?? []) as unknown as RawQuestion[], shuffleSeed, exam_id);

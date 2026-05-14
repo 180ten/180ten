@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
   renderQText, renderChoiceText,
-  sanitizeHtml, sanitizedRenderRich, sanitizedRenderRichInline,
+  sanitizeHtml, sanitizedRenderRich, sanitizedRenderRichInline, sanitizeAudioDisplay,
   buildMondaiHeader, buildBjtSectionHeader, bjtPartLabel,
 } from "@/lib/furigana";
 import { getSubImageUrl, type SubQuestion, type PassageGroup } from "@/lib/examRender";
@@ -1130,10 +1130,11 @@ function ReadingContent({
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
 function ListenAudioAndScript({
-  audioSrc, lines,
+  audioSrc, lines, audioDisplay,
 }: {
   audioSrc: string | null;
   lines: AudioScriptLine[];
+  audioDisplay: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -1147,7 +1148,8 @@ function ListenAudioAndScript({
     setActiveLine(idx);
   }
 
-  if (!audioSrc && lines.length === 0) return null;
+  const hasDisplay = !!(audioDisplay && audioDisplay.trim());
+  if (!audioSrc && lines.length === 0 && !hasDisplay) return null;
   return (
     <div className="per-question-audio-wrap">
       {audioSrc && (
@@ -1159,7 +1161,7 @@ function ListenAudioAndScript({
           preload="metadata"
         />
       )}
-      {lines.length > 0 && (
+      {(lines.length > 0 || hasDisplay) && (
         <div className="audio-script-box">
           <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
             <span>📝 Script</span>
@@ -1173,24 +1175,31 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            <div className="script-paragraph">
-              {lines.map((line, idx) => (
-                <span
-                  key={idx}
-                  className={`script-sentence${activeLine === idx ? " active" : ""}`}
-                  onClick={() => handleLineClick(idx, line.start)}
-                  title={line.start ? `▶ ${line.start}` : undefined}
-                  // sanitizedRenderRich emits a wrapping <div> (block) —
-                  // would force every sentence onto its own line. The
-                  // *Inline variant skips the wrapper while keeping
-                  // furigana / vocab / grammar tag rendering intact.
-                  // No separator between sentences — Japanese prose
-                  // typically isn't space-separated and the trailing
-                  // space was creating visible gaps between sentences.
-                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
-                />
-              ))}
-            </div>
+            hasDisplay ? (
+              // Admin-supplied rich layout wins — click-to-seek isn't
+              // wired here because the display can re-arrange / merge
+              // sentences arbitrarily, breaking the line-index mapping.
+              <div
+                className="audio-display-content"
+                dangerouslySetInnerHTML={{ __html: sanitizeAudioDisplay(audioDisplay!) }}
+              />
+            ) : (
+              <div className="script-paragraph">
+                {lines.map((line, idx) => (
+                  <span
+                    key={idx}
+                    className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                    onClick={() => handleLineClick(idx, line.start)}
+                    title={line.start ? `▶ ${line.start}` : undefined}
+                    // sanitizedRenderRich emits a wrapping <div> (block) —
+                    // would force every sentence onto its own line. The
+                    // *Inline variant skips the wrapper while keeping
+                    // furigana / vocab / grammar tag rendering intact.
+                    dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
+                  />
+                ))}
+              </div>
+            )
           )}
         </div>
       )}
@@ -1286,12 +1295,17 @@ function ListeningContent({
         (typeof (q as { audioScript?: unknown }).audioScript === "string" && (q as { audioScript: string }).audioScript) ||
         null;
       const lines: AudioScriptLine[] = parseScriptLines(scriptRaw);
-      if (perQAudio || lines.length > 0) {
+      const audioDisplay =
+        (typeof (q as { audio_display?: unknown }).audio_display === "string" && (q as { audio_display: string }).audio_display) ||
+        (typeof (q as { audioDisplay?: unknown }).audioDisplay === "string" && (q as { audioDisplay: string }).audioDisplay) ||
+        null;
+      if (perQAudio || lines.length > 0 || (audioDisplay && audioDisplay.trim())) {
         elems.push(
           <ListenAudioAndScript
             key={`${id}-audio-script`}
             audioSrc={perQAudio}
             lines={lines}
+            audioDisplay={audioDisplay}
           />,
         );
       }

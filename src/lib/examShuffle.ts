@@ -197,6 +197,11 @@ export interface RawQuestion {
   audio_url?: string | null;
   /** JSON-stringified AudioScriptLine[] (see lib/audioScript.ts). */
   audio_script?: string | null;
+  /** Sanitized rich-text HTML override for the script display in
+   *  review mode (see AudioDisplayEditor in ComposeTab). When set,
+   *  it replaces the inline-paragraph fallback assembled from
+   *  audio_script timestamp rows. */
+  audio_display?: string | null;
 }
 
 export interface SanitizedQuestion {
@@ -207,6 +212,7 @@ export interface SanitizedQuestion {
   data: Record<string, unknown>; // contains `choices` arrays, no `correct`/`wrongs`
   audio_url?: string | null;
   audio_script?: string | null;
+  audio_display?: string | null;
 }
 
 // ─── Internal: replace correct+wrongs with shuffled choices ─────────
@@ -308,8 +314,9 @@ export function sanitizeQuestion(
       level: q.level ?? null,
       order_index: q.order_index ?? null,
       data,
-      audio_url:    q.audio_url    ?? null,
-      audio_script: q.audio_script ?? null,
+      audio_url:     q.audio_url     ?? null,
+      audio_script:  q.audio_script  ?? null,
+      audio_display: q.audio_display ?? null,
     },
     slotKeys,
   };

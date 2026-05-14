@@ -1200,6 +1200,71 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
+// ContentEditable rich-text editor for the audio_display column —
+// independent of the timestamp table. Saves raw HTML; review mode runs
+// it through sanitizeAudioDisplay before render.
+function AudioDisplayEditor({
+  value, onChange,
+}: { value: string; onChange: (html: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  // Seed once on mount; further DOM updates are driven by the user's
+  // typing. Re-syncing on every `value` change would steal caret
+  // position whenever the parent state round-trips.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (el && el.innerHTML !== (value ?? "")) {
+      el.innerHTML = value ?? "";
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const execCmd = (cmd: string, val?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, val);
+    onChange(editorRef.current?.innerHTML ?? "");
+  };
+
+  return (
+    <div className="ade-wrap">
+      <div className="ade-toolbar">
+        <button type="button" onClick={() => execCmd("justifyLeft")}   title="Căn trái">⬅</button>
+        <button type="button" onClick={() => execCmd("justifyCenter")} title="Căn giữa">↔</button>
+        <button type="button" onClick={() => execCmd("justifyRight")}  title="Căn phải">➡</button>
+        <div className="ade-sep" />
+        <button type="button" onClick={() => execCmd("bold")}   title="Bold"><strong>B</strong></button>
+        <button type="button" onClick={() => execCmd("italic")} title="Italic"><em>I</em></button>
+        <div className="ade-sep" />
+        <button type="button" onClick={() => execCmd("insertParagraph")} title="Xuống dòng">↵</button>
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="ade-editor"
+        onInput={() => onChange(editorRef.current?.innerHTML ?? "")}
+        // Browsers don't honour `placeholder` on contentEditable; the
+        // CSS uses :empty::before to fake it from this attribute.
+        data-placeholder="Nhập nội dung hiển thị script (hỗ trợ căn lề, xuống dòng...)"
+      />
+    </div>
+  );
+}
+
+function AudioDisplayField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
+  return (
+    <Fl
+      label="🎨 Trình bày script (hiển thị trong review)"
+      hint="Căn lề, xuống dòng tùy ý. Khi có nội dung, review sẽ hiển thị bố cục này thay cho đoạn inline ở trên."
+    >
+      <AudioDisplayEditor
+        value={typeof data.audioDisplay === "string" ? data.audioDisplay : ""}
+        onChange={(html) => onChange({ ...data, audioDisplay: html })}
+      />
+    </Fl>
+  );
+}
+
 function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
@@ -1219,6 +1284,7 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1260,6 +1326,7 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1307,6 +1374,7 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioDisplayField data={data} onChange={onChange} />
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
         {isN1OrN2Level(level) && (
@@ -1891,15 +1959,17 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
       // top-level columns. data.audioUrl / data.audioScript stay in
       // the JSONB body so the load flow can spread them back into the
       // editor without an extra read path.
-      const audioUrl    = typeof q.audioUrl    === "string" ? q.audioUrl    : null;
-      const audioScript = typeof q.audioScript === "string" ? q.audioScript : null;
+      const audioUrl     = typeof q.audioUrl     === "string" ? q.audioUrl     : null;
+      const audioScript  = typeof q.audioScript  === "string" ? q.audioScript  : null;
+      const audioDisplay = typeof q.audioDisplay === "string" ? q.audioDisplay : null;
       return {
         id: q.id, exam_id: exam.id, type: q.type,
         level: q.level || exam.level,
         order_index: q.order_index ?? i,
         data: q,
-        audio_url:    audioUrl    || null,
-        audio_script: audioScript || null,
+        audio_url:     audioUrl     || null,
+        audio_script:  audioScript  || null,
+        audio_display: audioDisplay || null,
       };
     });
     try {
@@ -2249,8 +2319,9 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
           ...data,
           id: String(q.id), type: String(q.type), level: String(q.level||examData.level||""),
           order_index: Number(q.order_index ?? 0),
-          audioUrl:    typeof top.audio_url    === "string" && top.audio_url    ? top.audio_url    : (data.audioUrl    ?? ""),
-          audioScript: typeof top.audio_script === "string" && top.audio_script ? top.audio_script : (data.audioScript ?? ""),
+          audioUrl:     typeof top.audio_url     === "string" && top.audio_url     ? top.audio_url     : (data.audioUrl     ?? ""),
+          audioScript:  typeof top.audio_script  === "string" && top.audio_script  ? top.audio_script  : (data.audioScript  ?? ""),
+          audioDisplay: typeof top.audio_display === "string" && top.audio_display ? top.audio_display : (data.audioDisplay ?? ""),
         } as ComposeQuestion;
       });
       setExam({
