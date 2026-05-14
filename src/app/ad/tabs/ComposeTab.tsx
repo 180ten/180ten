@@ -1257,21 +1257,28 @@ function AudioDisplayEditor({
     });
 
     lines.forEach((line, idx) => {
-      let pill = editor.querySelector<HTMLElement>(`[data-sentence="${idx}"]`);
-      if (!pill) {
-        pill = document.createElement("span");
-        pill.setAttribute("data-sentence", String(idx));
-        pill.setAttribute("contenteditable", "false");
-        pill.className = "ade-pill";
-        pill.textContent = `S${idx + 1}`;
+      let chip = editor.querySelector<HTMLElement>(`[data-sentence="${idx}"]`);
+      const text = line?.text ?? "";
+      const tip  = line?.start ? `▶ ${line.start}` : "";
+      if (!chip) {
+        chip = document.createElement("span");
+        chip.setAttribute("data-sentence", String(idx));
+        chip.setAttribute("contenteditable", "false");
+        chip.className = "ade-chip";
+        chip.textContent = text;
         if (editor.innerHTML.trim()) {
           editor.appendChild(document.createTextNode(" "));
         }
-        editor.appendChild(pill);
+        editor.appendChild(chip);
+        mutated = true;
+      } else if (chip.textContent !== text) {
+        // Live-edit in the timestamp table reflects in the layout
+        // editor immediately — admins see the real sentence they're
+        // arranging, not a stale snapshot.
+        chip.textContent = text;
         mutated = true;
       }
-      const tip = (line?.text ?? "").slice(0, 40);
-      if (pill.title !== tip) pill.title = tip;
+      if (chip.title !== tip) chip.title = tip;
     });
 
     if (mutated) onChangeRef.current(editor.innerHTML);
@@ -1300,7 +1307,7 @@ function AudioDisplayEditor({
         onInput={() => onChange(editorRef.current?.innerHTML ?? "")}
         // Browsers don't honour `placeholder` on contentEditable; the
         // CSS uses :empty::before to fake it from this attribute.
-        data-placeholder="Pill S1, S2... tự thêm theo bảng. Sắp xếp + căn lề + Enter xuống dòng tùy ý."
+        data-placeholder="Câu thật từ bảng tự xuất hiện ở đây. Sắp xếp + căn lề + Enter xuống dòng tùy ý."
       />
     </div>
   );
@@ -1316,7 +1323,7 @@ function AudioDisplayField({ data, onChange }: { data: QData; onChange: (d: QDat
   return (
     <Fl
       label="🎨 Trình bày script (hiển thị trong review)"
-      hint="Pill S1, S2... đồng bộ tự động theo bảng. Admin chỉ căn lề + Enter xuống dòng — review thay pill bằng câu thật và bật click-to-seek."
+      hint="Câu thật từ bảng đồng bộ tự động (gạch chân đứt = không edit). Admin chỉ căn lề + Enter xuống dòng — review hiển thị bố cục này và bật click-to-seek."
     >
       <AudioDisplayEditor
         lines={lines}
