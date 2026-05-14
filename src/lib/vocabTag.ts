@@ -1,18 +1,17 @@
 "use client";
 // src/lib/vocabTag.ts
-// Vocab tag 〖...〗 (new) or 【...】 (legacy) in passages/main-question text.
-// All four functions below accept either pair so existing DB content keeps
-// working while admins migrate to the new bracket. Three-layer cache:
+// Vocab tag 〖...〗 in passages / question stems / answer choices.
+// 【...】 is intentionally NOT recognised — admins use it as literal
+// punctuation now, and any text wrapped in 【...】 should render
+// verbatim (no popup, no auto-vocab, no bracket stripping).
+//
+// Three-layer cache for the lookup itself:
 //   1. session Map (in-memory, lives until full reload)
 //   2. localStorage (7-day TTL, survives reloads)
 //   3. Supabase fetch (single-row, deduped by `inflight`)
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Backward-compatible bracket pair: `〖` (U+3016) or `【` (U+3010) opens,
-// `〗` (U+3017) or `】` (U+3011) closes. The character class form means a
-// single regex matches either pair (and even the cross-mismatched `【…〗`
-// — harmless edge case the parser tolerates).
-const VOCAB_TAG_RE = /[〖【]([^〗】]+)[〗】]/g;
+const VOCAB_TAG_RE = /〖([^〗]+)〗/g;
 
 // ── Tag parsing ──────────────────────────────────────────────────────────
 // `inner` is whatever sits between the brackets. The DISPLAY value is always
@@ -167,16 +166,29 @@ async function fetchFromDb(surface: string, sb: SupabaseClient): Promise<VocabEn
     .select(VOCAB_COLS)
     .eq("word", surface)
     .maybeSingle();
+  console.log("[lookupVocab] exact", { surface, hit: !!exact, error: exactErr?.message });
   if (exactErr) return null;
   if (exact) return rowToEntry(exact as VocabRow);
 
   // Variant fallback — text[] column, PostgREST `@>` containment.
-  const { data: byVariant } = await sb
+  const { data: byVariant, error: vErr } = await sb
     .from("vocabulary_library")
     .select(VOCAB_COLS)
     .contains("variants", [surface])
     .maybeSingle();
+  console.log("[lookupVocab] contains", { surface, hit: !!byVariant, error: vErr?.message });
   if (byVariant) return rowToEntry(byVariant as VocabRow);
+
+  // Secondary fallback — raw PostgREST `cs` filter. Same operator as
+  // .contains() but bypasses any quirk in the supabase-js array
+  // serialization.
+  const { data: byFilter, error: fErr } = await sb
+    .from("vocabulary_library")
+    .select(VOCAB_COLS)
+    .filter("variants", "cs", `{${surface}}`)
+    .limit(1);
+  console.log("[lookupVocab] filter cs", { surface, count: byFilter?.length ?? 0, error: fErr?.message });
+  if (byFilter && byFilter.length > 0) return rowToEntry(byFilter[0] as VocabRow);
 
   return null;
 }
