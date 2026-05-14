@@ -1174,19 +1174,31 @@ function ListenAudioAndScript({
           </div>
           {open && (
             <div className="script-paragraph">
-              {lines.map((line, idx) => (
-                <span
-                  key={idx}
-                  className={`script-sentence${activeLine === idx ? " active" : ""}`}
-                  onClick={() => handleLineClick(idx, line.start)}
-                  title={line.start ? `▶ ${line.start}` : undefined}
-                  // sanitizedRenderRich emits a wrapping <div> (block) —
-                  // would force every sentence onto its own line. The
-                  // *Inline variant skips the wrapper while keeping
-                  // furigana / vocab / grammar tag rendering intact.
-                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) }}
-                />
-              ))}
+              {lines.map((line, idx) => {
+                // [SPACE] rows are layout-only spacers admins added
+                // via the toolbar — render a hard line break with no
+                // click target / timecode.
+                if (line.text === "[SPACE]") return <br key={idx} />;
+                // *bold* → <strong>bold</strong> before the rich
+                // renderer runs; sanitizer keeps <strong> on its
+                // allowlist so the bold survives.
+                const html = sanitizedRenderRichInline(
+                  line.text.replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>"),
+                );
+                return (
+                  <span
+                    key={idx}
+                    className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                    onClick={() => handleLineClick(idx, line.start)}
+                    title={line.start ? `▶ ${line.start}` : undefined}
+                    // sanitizedRenderRich emits a wrapping <div> (block) —
+                    // would force every sentence onto its own line. The
+                    // *Inline variant skips the wrapper while keeping
+                    // furigana / vocab / grammar tag rendering intact.
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

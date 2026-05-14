@@ -941,8 +941,17 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 /* AudioScriptEditor (admin ComposeTab) — dark variant matching
    admin shell. Uses inline-style colors via vars where available. */
 .audio-script-editor{border:1.5px solid #2a2a2a;border-radius:10px;overflow:hidden;background:#0f0f0f;}
+.ase-toolbar{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;}
+.ase-toolbar-btn{padding:5px 10px;border:1px solid #2a2a2a;border-radius:6px;background:#0a0a0a;font-size:12px;cursor:pointer;color:#e8e8e8;font-family:monospace;display:inline-flex;align-items:center;gap:4px;transition:background .15s,border-color .15s;}
+.ase-toolbar-btn:hover{background:#1f1f3a;border-color:#3a3a4a;}
+.ase-toolbar-btn img{display:block;filter:brightness(0) invert(1);opacity:.85;}
+.ase-toolbar-btn:hover img{opacity:1;}
+.ase-toolbar-btn-bold{font-weight:700;}
 .ase-header{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:8px 10px;background:#1a1a1a;font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em;}
 .ase-row{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:6px 10px;border-top:1px solid #2a2a2a;align-items:center;}
+.ase-row-space{background:#15152a;}
+.ase-row-space .ase-input-time{opacity:.5;}
+.ase-space-label{font-size:12px;color:#9ea1ff;font-style:italic;display:flex;align-items:center;padding:0 8px;letter-spacing:.04em;}
 .ase-input-time{font-size:13px;padding:5px 6px;border:1px solid #2a2a2a;border-radius:6px;text-align:center;font-family:monospace;width:100%;background:#0a0a0a;color:#e8e8e8;outline:none;}
 .ase-input-time:focus{border-color:#6C6FF7;}
 .ase-input-text{font-size:13px;padding:5px 8px;border:1px solid #2a2a2a;border-radius:6px;width:100%;font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;background:#0a0a0a;color:#e8e8e8;outline:none;}

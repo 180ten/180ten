@@ -1117,47 +1117,115 @@ function AudioUrlField({
 function AudioScriptEditor({
   lines, onChange,
 }: { lines: AudioScriptLine[]; onChange: (next: AudioScriptLine[]) => void }) {
+  // Tracks the last text input the admin focused, so the toolbar's
+  // Bold button can act on whichever row has selection. Buttons use
+  // onMouseDown=preventDefault so clicking them doesn't blur the
+  // input and lose the selection.
+  const activeInputRef = useRef<HTMLInputElement | null>(null);
+
   const updateLine = (idx: number, field: keyof AudioScriptLine, value: string) => {
     onChange(lines.map((l, i) => (i === idx ? { ...l, [field]: value } : l)));
   };
-  const addLine = () => onChange([...lines, { start: "", end: "", text: "" }]);
-  const removeLine = (idx: number) => onChange(lines.filter((_, i) => i !== idx));
+  const addLine      = () => onChange([...lines, { start: "", end: "", text: "" }]);
+  const addSpaceLine = () => onChange([...lines, { start: "", end: "", text: "[SPACE]" }]);
+  const removeLine   = (idx: number) => onChange(lines.filter((_, i) => i !== idx));
+
+  // Wrap / unwrap the input's current selection with `*…*`. The
+  // review renderer turns that into <strong>. Toggle is best-effort:
+  // if the selection already starts and ends with `*`, strip them.
+  const handleBold = () => {
+    const el = activeInputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end   = el.selectionEnd   ?? 0;
+    if (start === end) return;
+    const val = el.value;
+    const selected = val.slice(start, end);
+    const isBold = selected.startsWith("*") && selected.endsWith("*") && selected.length >= 2;
+    const replacement = isBold ? selected.slice(1, -1) : `*${selected}*`;
+    const nextVal = val.slice(0, start) + replacement + val.slice(end);
+    // React tracks input state via a getter/setter override on the
+    // DOM property — going through the native setter + dispatching
+    // an `input` event is the only way to trigger React's onChange
+    // from a programmatic value mutation.
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, "value",
+    )?.set;
+    setter?.call(el, nextVal);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = start;
+      el.selectionEnd   = start + replacement.length;
+    });
+  };
+
   return (
     <div className="audio-script-editor">
+      <div className="ase-toolbar">
+        <button
+          type="button"
+          className="ase-toolbar-btn"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={addSpaceLine}
+          title="Thêm dòng trống (khoảng cách)"
+        >
+          <img src="/svg/space.svg" alt="" width={18} height={18} />
+        </button>
+        <button
+          type="button"
+          className="ase-toolbar-btn ase-toolbar-btn-bold"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleBold}
+          title="In đậm phần đã bôi đen (*text*)"
+        >
+          <img src="/svg/bold.svg" alt="" width={16} height={16} />
+        </button>
+      </div>
       <div className="ase-header">
         <span className="ase-col-time">Start</span>
         <span className="ase-col-time">End</span>
         <span className="ase-col-text">Nội dung</span>
         <span className="ase-col-action" />
       </div>
-      {lines.map((line, idx) => (
-        <div key={idx} className="ase-row">
-          <input
-            className="ase-input-time"
-            value={line.start}
-            onChange={(e) => updateLine(idx, "start", e.target.value)}
-            placeholder="00:05"
-          />
-          <input
-            className="ase-input-time"
-            value={line.end}
-            onChange={(e) => updateLine(idx, "end", e.target.value)}
-            placeholder="00:12"
-          />
-          <input
-            className="ase-input-text"
-            value={line.text}
-            onChange={(e) => updateLine(idx, "text", e.target.value)}
-            placeholder="Nội dung câu..."
-          />
-          <button
-            type="button"
-            className="ase-btn-remove"
-            title="Xoá dòng"
-            onClick={() => removeLine(idx)}
-          >×</button>
-        </div>
-      ))}
+      {lines.map((line, idx) => {
+        const isSpace = line.text === "[SPACE]";
+        return (
+          <div key={idx} className={`ase-row${isSpace ? " ase-row-space" : ""}`}>
+            <input
+              className="ase-input-time"
+              value={line.start}
+              disabled={isSpace}
+              onChange={(e) => updateLine(idx, "start", e.target.value)}
+              placeholder="00:05"
+            />
+            <input
+              className="ase-input-time"
+              value={line.end}
+              disabled={isSpace}
+              onChange={(e) => updateLine(idx, "end", e.target.value)}
+              placeholder="00:12"
+            />
+            {isSpace ? (
+              <span className="ase-space-label">— khoảng trống —</span>
+            ) : (
+              <input
+                className="ase-input-text"
+                value={line.text}
+                onFocus={(e) => { activeInputRef.current = e.currentTarget; }}
+                onChange={(e) => updateLine(idx, "text", e.target.value)}
+                placeholder="Nội dung câu..."
+              />
+            )}
+            <button
+              type="button"
+              className="ase-btn-remove"
+              title="Xoá dòng"
+              onClick={() => removeLine(idx)}
+            >×</button>
+          </div>
+        );
+      })}
       <button type="button" className="ase-btn-add" onClick={addLine}>
         + Thêm dòng
       </button>
