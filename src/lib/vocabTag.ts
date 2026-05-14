@@ -153,42 +153,58 @@ function rowToEntry(row: VocabRow): VocabEntry {
 
 const VOCAB_COLS = "word, reading, han_viet, word_type, meaning, examples";
 
+// 美化語 (bikago) prefix candidates. お店 → 店, ご飯 → 飯, 御飯 → 飯.
+// Heuristic — the actual existence check happens via the DB lookup, so
+// over-stripping (e.g. お湯 where お is part of the lemma) is harmless:
+// it just means one extra miss before falling back to null.
+function stripBikago(surface: string): string[] {
+  const candidates: string[] = [];
+  if (surface.length > 1 && (surface.startsWith("お") || surface.startsWith("ご") || surface.startsWith("御"))) {
+    candidates.push(surface.slice(1));
+  }
+  return candidates;
+}
+
 // Lookup a single surface form. Tries `word = surface` first; on miss,
-// falls back to `variants @> [surface]` so any inflected form the admin
-// listed maps back to its canonical entry. The cached entry is keyed by
-// the SURFACE (what callers ask for), with `entry.word` carrying the
-// canonical form — so subsequent lookups by either surface or canonical
-// hit the same cached row.
+// falls back to `variants @> [surface]`; on miss again, strips
+// 美化語 prefix (お/ご/御) and retries both word + variants on the base
+// form. The cached entry is keyed by the original SURFACE (お店), with
+// `entry.word` carrying the canonical form (店) — so subsequent lookups
+// of the same surface hit the cache instantly.
 async function fetchFromDb(surface: string, sb: SupabaseClient): Promise<VocabEntry | null> {
-  // Exact word match
+  // 1) Exact word match
   const { data: exact, error: exactErr } = await sb
     .from("vocabulary_library")
     .select(VOCAB_COLS)
     .eq("word", surface)
     .maybeSingle();
-  console.log("[lookupVocab] exact", { surface, hit: !!exact, error: exactErr?.message });
   if (exactErr) return null;
   if (exact) return rowToEntry(exact as VocabRow);
 
-  // Variant fallback — text[] column, PostgREST `@>` containment.
-  const { data: byVariant, error: vErr } = await sb
+  // 2) Variant fallback — text[] column, PostgREST `@>` containment.
+  const { data: byVariant } = await sb
     .from("vocabulary_library")
     .select(VOCAB_COLS)
     .contains("variants", [surface])
     .maybeSingle();
-  console.log("[lookupVocab] contains", { surface, hit: !!byVariant, error: vErr?.message });
   if (byVariant) return rowToEntry(byVariant as VocabRow);
 
-  // Secondary fallback — raw PostgREST `cs` filter. Same operator as
-  // .contains() but bypasses any quirk in the supabase-js array
-  // serialization.
-  const { data: byFilter, error: fErr } = await sb
-    .from("vocabulary_library")
-    .select(VOCAB_COLS)
-    .filter("variants", "cs", `{${surface}}`)
-    .limit(1);
-  console.log("[lookupVocab] filter cs", { surface, count: byFilter?.length ?? 0, error: fErr?.message });
-  if (byFilter && byFilter.length > 0) return rowToEntry(byFilter[0] as VocabRow);
+  // 3) Strip 美化語 prefix and retry — お店 → 店, ご飯 → 飯, …
+  for (const base of stripBikago(surface)) {
+    const { data: baseExact } = await sb
+      .from("vocabulary_library")
+      .select(VOCAB_COLS)
+      .eq("word", base)
+      .maybeSingle();
+    if (baseExact) return rowToEntry(baseExact as VocabRow);
+
+    const { data: baseVariant } = await sb
+      .from("vocabulary_library")
+      .select(VOCAB_COLS)
+      .contains("variants", [base])
+      .maybeSingle();
+    if (baseVariant) return rowToEntry(baseVariant as VocabRow);
+  }
 
   return null;
 }
@@ -214,8 +230,10 @@ export async function lookupVocab(word: string, sb: SupabaseClient): Promise<Voc
 
   const promise = fetchFromDb(key, sb)
     .then((entry) => {
-      sessionCache.set(key, entry);
       if (entry) {
+        // Only cache POSITIVE hits — caching null pinned stale negatives
+        // when admins added variants/bikago entries mid-session.
+        sessionCache.set(key, entry);
         const next = { ...readLocal(), [key]: entry };
         writeLocal(next);
       }
@@ -286,8 +304,8 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
   // PostgREST doesn't support OR over array containment, so we issue
   // one tiny query per unmatched surface. Acceptable because most
   // exam runs have ≤ a handful of inflected forms per question.
-  const stillMissing = missing.filter((m) => !foundKeys.has(m));
-  for (const surface of stillMissing) {
+  const phase2Missing = missing.filter((m) => !foundKeys.has(m));
+  for (const surface of phase2Missing) {
     const { data: vrow } = await sb
       .from("vocabulary_library")
       .select(VOCAB_COLS)
@@ -300,14 +318,43 @@ export async function lookupVocabBulk(words: string[], sb: SupabaseClient): Prom
       sessionCache.set(surface, entry);
       out.set(surface, entry);
       foundKeys.add(surface);
-    } else {
-      sessionCache.set(surface, null);
     }
   }
 
-  // Cache the negative result for canonical words that didn't match
-  // any row in either phase.
-  for (const m of missing) if (!foundKeys.has(m)) sessionCache.set(m, null);
+  // ── Phase 3: 美化語 strip — お店 → 店, ご飯 → 飯 ────────────────
+  // Same N+1 shape as phase 2; bikago surfaces are always rare in any
+  // single passage so the cost is negligible.
+  const phase3Missing = missing.filter((m) => !foundKeys.has(m));
+  for (const surface of phase3Missing) {
+    for (const base of stripBikago(surface)) {
+      const { data: baseExact } = await sb
+        .from("vocabulary_library")
+        .select(VOCAB_COLS)
+        .eq("word", base)
+        .maybeSingle();
+      if (baseExact) {
+        const entry = rowToEntry(baseExact as VocabRow);
+        sessionCache.set(surface, entry);
+        out.set(surface, entry);
+        foundKeys.add(surface);
+        break;
+      }
+      const { data: baseVariant } = await sb
+        .from("vocabulary_library")
+        .select(VOCAB_COLS)
+        .contains("variants", [base])
+        .maybeSingle();
+      if (baseVariant) {
+        const entry = rowToEntry(baseVariant as VocabRow);
+        sessionCache.set(surface, entry);
+        out.set(surface, entry);
+        foundKeys.add(surface);
+        break;
+      }
+    }
+  }
+  // Deliberately NOT caching null for unmatched surfaces — keeps the
+  // cache from going stale when admins add a missing entry mid-session.
 
   // Persist newly fetched entries to localStorage in one batch
   if (foundKeys.size > 0) {
