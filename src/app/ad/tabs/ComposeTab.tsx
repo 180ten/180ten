@@ -1222,11 +1222,15 @@ function AudioDisplayEditor({
   // Seed once on mount; ongoing DOM updates come from typing + the
   // pill-sync effect below. Re-applying `value` on every change would
   // steal caret position.
+  //
+  // Force `Enter` to emit a single <br> instead of wrapping the line
+  // in <div>/<p> — keeps spacing tight and predictable around chips.
   useEffect(() => {
     const el = editorRef.current;
     if (el && el.innerHTML !== (value ?? "")) {
       el.innerHTML = value ?? "";
     }
+    try { document.execCommand("defaultParagraphSeparator", false, "br"); } catch { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1245,11 +1249,11 @@ function AudioDisplayEditor({
     existingPills.forEach((pill) => {
       const idx = parseInt(pill.getAttribute("data-sentence") ?? "-1", 10);
       if (idx < 0 || idx >= lines.length) {
-        // Drop the joining space we inserted before this pill so the
-        // editor doesn't accumulate orphan whitespace.
-        const prev = pill.previousSibling;
-        if (prev && prev.nodeType === Node.TEXT_NODE && prev.nodeValue === " ") {
-          prev.parentNode?.removeChild(prev);
+        // Drop the trailing ZWSP we inserted after this chip so the
+        // editor doesn't accumulate orphan separators.
+        const next = pill.nextSibling;
+        if (next && next.nodeType === Node.TEXT_NODE && next.nodeValue === "​") {
+          next.parentNode?.removeChild(next);
         }
         pill.remove();
         mutated = true;
@@ -1266,10 +1270,15 @@ function AudioDisplayEditor({
         chip.setAttribute("contenteditable", "false");
         chip.className = "ade-chip";
         chip.textContent = text;
-        if (editor.innerHTML.trim()) {
-          editor.appendChild(document.createTextNode(" "));
+        // Flank chips with zero-width spaces so the caret has a
+        // landing spot on either side. contentEditable refuses to
+        // place the cursor adjacent to a contenteditable=false node
+        // sitting at the start/end of a block, otherwise.
+        if (editor.childNodes.length === 0) {
+          editor.appendChild(document.createTextNode("​"));
         }
         editor.appendChild(chip);
+        editor.appendChild(document.createTextNode("​"));
         mutated = true;
       } else if (chip.textContent !== text) {
         // Live-edit in the timestamp table reflects in the layout
@@ -1290,6 +1299,30 @@ function AudioDisplayEditor({
     onChange(editorRef.current?.innerHTML ?? "");
   };
 
+  // Insert a single <br> at the caret instead of execCommand's
+  // insertParagraph (which wraps in <p>/<div> and visually doubles
+  // the gap because of default block margins).
+  const insertLineBreak = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) {
+      editor.appendChild(document.createElement("br"));
+      onChange(editor.innerHTML);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const br = document.createElement("br");
+    range.deleteContents();
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.setEndAfter(br);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    onChange(editor.innerHTML);
+  };
+
   return (
     <div className="ade-wrap">
       <div className="ade-toolbar">
@@ -1297,7 +1330,7 @@ function AudioDisplayEditor({
         <button type="button" onClick={() => execCmd("justifyCenter")} title="Căn giữa">↔</button>
         <button type="button" onClick={() => execCmd("justifyRight")}  title="Căn phải">➡</button>
         <div className="ade-sep" />
-        <button type="button" onClick={() => execCmd("insertParagraph")} title="Xuống dòng">↵</button>
+        <button type="button" onClick={insertLineBreak} title="Xuống dòng">↵</button>
       </div>
       <div
         ref={editorRef}

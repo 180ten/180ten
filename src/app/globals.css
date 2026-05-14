@@ -962,13 +962,18 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ade-toolbar button{width:30px;height:28px;border:none;background:none;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;justify-content:center;transition:background .15s;}
 .ade-toolbar button:hover{background:var(--border);}
 .ade-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
-.ade-editor{min-height:80px;padding:12px 14px;font-size:14px;line-height:2;font-family:'Noto Sans JP',sans-serif;color:var(--text);outline:none;background:var(--white);}
+.ade-editor{min-height:80px;padding:12px 14px;font-size:14px;line-height:1.8;font-family:'Noto Sans JP',sans-serif;color:var(--text);outline:none;background:var(--white);}
 .ade-editor:empty::before{content:attr(data-placeholder);color:var(--muted2);pointer-events:none;}
+/* Default block margins on p/div double-space the editor and review;
+   strip them so <br> from defaultParagraphSeparator just moves down a
+   single line. */
+.ade-editor p,.ade-editor div{margin:0;padding:0;}
 .ade-chip{display:inline;cursor:default;user-select:none;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;border-bottom:1.5px dashed #0284c7;padding-bottom:1px;}
 .ade-chip:hover{background:#f0f9ff;border-radius:3px;}
 
 /* Review-mode rendering of audio_display HTML */
-.audio-display-content{padding:14px;font-size:15px;line-height:2;color:var(--text);font-family:'Noto Sans JP',sans-serif;border-top:1px solid var(--border);}
+.audio-display-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;border-top:1px solid var(--border);white-space:pre-wrap;}
+.audio-display-content p,.audio-display-content div{margin:0;padding:0;}
 .audio-display-content .script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .15s;}
 .audio-display-content .script-sentence:hover{background:#e0f2fe;}
 
