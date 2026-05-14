@@ -30,13 +30,16 @@ export function parseScriptLines(raw: string | null | undefined): AudioScriptLin
   try {
     const parsed = JSON.parse(trimmed);
     if (Array.isArray(parsed)) {
-      return parsed
-        .map((p) => ({
-          start: String((p as { start?: unknown })?.start ?? ""),
-          end:   String((p as { end?: unknown })?.end ?? ""),
-          text:  String((p as { text?: unknown })?.text ?? ""),
-        }))
-        .filter((l) => l.text.trim());
+      // Don't filter empty-text rows — the admin editor relies on
+      // round-tripping its current row list through this parser, so
+      // dropping `{start:"", end:"", text:""}` would make "+ Thêm
+      // dòng" appear to do nothing (the new blank row would never
+      // come back from the store).
+      return parsed.map((p) => ({
+        start: String((p as { start?: unknown })?.start ?? ""),
+        end:   String((p as { end?: unknown })?.end ?? ""),
+        text:  String((p as { text?: unknown })?.text ?? ""),
+      }));
     }
   } catch { /* fall through */ }
   // Legacy plain-text script — keep as one line.
