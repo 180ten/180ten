@@ -154,14 +154,42 @@ function rowToEntry(row: VocabRow): VocabEntry {
 const VOCAB_COLS = "word, reading, han_viet, word_type, meaning, examples";
 
 // 美化語 (bikago) prefix candidates. お店 → 店, ご飯 → 飯, 御飯 → 飯.
-// Heuristic — the actual existence check happens via the DB lookup, so
-// over-stripping (e.g. お湯 where お is part of the lemma) is harmless:
-// it just means one extra miss before falling back to null.
+// Heuristic — only strip when:
+//   • surface is at least 3 chars (single-mora bases like お湯 stay
+//     as written; one extra DB miss isn't worth false-stripping
+//     ありがとう → りがとう)
+//   • base after the prefix starts with kanji (or hiragana for お/御);
+//     ご is normally followed by kanji so we keep that stricter
+//
+// The actual existence check still happens at DB level — over-strip
+// is harmless (just one wasted query), under-strip is the cost we
+// accept to avoid bogus matches.
 function stripBikago(surface: string): string[] {
   const candidates: string[] = [];
-  if (surface.length > 1 && (surface.startsWith("お") || surface.startsWith("ご") || surface.startsWith("御"))) {
-    candidates.push(surface.slice(1));
+
+  if (surface.startsWith("お") && surface.length >= 3) {
+    const base = surface.slice(1);
+    // base bắt đầu bằng kanji hoặc hiragana
+    if (/^[一-鿿ぁ-ゖ]/.test(base)) {
+      candidates.push(base);
+    }
   }
+
+  if (surface.startsWith("ご") && surface.length >= 3) {
+    const base = surface.slice(1);
+    // ご thường đi với kanji
+    if (/^[一-鿿]/.test(base)) {
+      candidates.push(base);
+    }
+  }
+
+  if (surface.startsWith("御") && surface.length >= 3) {
+    const base = surface.slice(1);
+    if (/^[一-鿿ぁ-ゖ]/.test(base)) {
+      candidates.push(base);
+    }
+  }
+
   return candidates;
 }
 
