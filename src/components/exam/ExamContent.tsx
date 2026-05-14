@@ -1180,10 +1180,12 @@ function ListenAudioAndScript({
                   className={`script-sentence${activeLine === idx ? " active" : ""}`}
                   onClick={() => handleLineClick(idx, line.start)}
                   title={line.start ? `▶ ${line.start}` : undefined}
-                >
-                  <span dangerouslySetInnerHTML={{ __html: sanitizedRenderRich(line.text) }} />
-                  {idx < lines.length - 1 ? " " : ""}
-                </span>
+                  // sanitizedRenderRich emits a wrapping <div> (block) —
+                  // would force every sentence onto its own line. The
+                  // *Inline variant skips the wrapper while keeping
+                  // furigana / vocab / grammar tag rendering intact.
+                  dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(line.text) + (idx < lines.length - 1 ? " " : "") }}
+                />
               ))}
             </div>
           )}
