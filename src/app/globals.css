@@ -947,7 +947,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .script-paragraph,.script-vi-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);}
 .script-paragraph{font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
 .script-vi-content{font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;}
-.script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .15s;display:inline;}
+.script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .3s ease;display:inline;}
 .script-sentence:hover{background:#e0f2fe;}
 .script-sentence.active{background:#bae6fd;font-weight:500;}
 

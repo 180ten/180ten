@@ -1140,6 +1140,7 @@ function ListenAudioAndScript({
   audioTranslation: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const scriptContainerRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [activeLine, setActiveLine] = useState<number | null>(null);
   // JP ↔ VI toggle, mirrors PassageBlock. Component is keyed per
@@ -1155,6 +1156,43 @@ function ListenAudioAndScript({
     void a.play().catch(() => { /* user gesture rules — ignore */ });
     setActiveLine(idx);
   }
+
+  // Auto-highlight whichever line the audio is currently inside.
+  // [SPACE] rows have no `start`, so they're skipped — the previous
+  // active line stays highlighted across the gap. timeupdate fires
+  // ~4 Hz on most browsers; cheap enough to scan the lines linearly.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || lines.length === 0) return;
+    const onTimeUpdate = () => {
+      const cur = audio.currentTime;
+      let nextIdx: number | null = null;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.start) continue;
+        const startSec = parseTimecode(line.start);
+        const endSec   = line.end ? parseTimecode(line.end) : Infinity;
+        if (cur >= startSec && cur < endSec) { nextIdx = i; break; }
+      }
+      // Setter callback dedupes — React still bails on identical
+      // primitive state, but skipping the call also avoids the
+      // closure allocation for the auto-scroll effect downstream.
+      setActiveLine((prev) => (prev === nextIdx ? prev : nextIdx));
+    };
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    return () => audio.removeEventListener("timeupdate", onTimeUpdate);
+  }, [lines]);
+
+  // Scroll the active sentence into view. `block:"nearest"` is a
+  // no-op when the element is already visible, so this only nudges
+  // the script when it would otherwise drift off-screen.
+  useEffect(() => {
+    if (activeLine === null) return;
+    const container = scriptContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-line-idx="${activeLine}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeLine]);
 
   if (!audioSrc && lines.length === 0 && !hasTranslation) return null;
   return (
@@ -1207,7 +1245,7 @@ function ListenAudioAndScript({
                   />
                 </div>
               ) : (
-                <div className="script-paragraph">
+                <div ref={scriptContainerRef} className="script-paragraph">
                   {lines.map((line, idx) => {
                     // [SPACE] rows are layout-only spacers admins added
                     // via the toolbar — render a hard line break with no
@@ -1220,6 +1258,7 @@ function ListenAudioAndScript({
                     return (
                       <span
                         key={idx}
+                        data-line-idx={idx}
                         className={`script-sentence${activeLine === idx ? " active" : ""}`}
                         onClick={() => handleLineClick(idx, line.start)}
                         title={line.start ? `▶ ${line.start}` : undefined}
