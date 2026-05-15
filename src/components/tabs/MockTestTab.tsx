@@ -690,12 +690,18 @@ export default function MockTestTab({
                       type="button"
                       className={`review-tab-btn${reviewTab === "dokkai" ? " active" : ""}`}
                       onClick={() => handleReviewTabChange("dokkai")}
-                    >📖 読解</button>
+                    >
+                      <img src="/svg/reading.svg" alt="" width={16} height={16} aria-hidden />
+                      読解
+                    </button>
                     <button
                       type="button"
                       className={`review-tab-btn${reviewTab === "choukai" ? " active" : ""}`}
                       onClick={() => handleReviewTabChange("choukai")}
-                    >🎧 聴解</button>
+                    >
+                      <img src="/svg/listening.svg" alt="" width={16} height={16} aria-hidden />
+                      聴解
+                    </button>
                   </div>
                 )}
                 <div className="q-grid" id="ev-qgrid">
