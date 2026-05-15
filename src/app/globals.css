@@ -965,6 +965,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-btn-remove:hover{background:#5a2020;}
 .ase-btn-add{width:100%;padding:8px;border:none;background:#1a1a2e;color:#9ea1ff;font-size:13px;font-weight:600;cursor:pointer;border-top:1px solid #2a2a2a;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
 .ase-btn-add:hover{background:#252540;}
+/* Live preview rendered with sanitizedRenderRichInline so admins
+   see exactly what the review-side script-paragraph will look like
+   (furigana, vocab tags, *bold*, _italic_, [SPACE] → <br>). */
+.ase-preview-box{border-top:1px solid #2a2a2a;background:#f8f9ff;padding:10px 14px;}
+.ase-preview-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.ase-preview-content{font-size:14px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;}
+.ase-preview-sentence{display:inline;}
 
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}

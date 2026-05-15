@@ -5,7 +5,11 @@
 // ───────────────────────────────────────────────────────────────
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { autoTrack, type AutoTrackDict } from "@/lib/autoTrack";
-import { parseScriptLines, type AudioScriptLine } from "@/lib/audioScript";
+import {
+  parseScriptLines, applyScriptInlineMarkup,
+  type AudioScriptLine,
+} from "@/lib/audioScript";
+import { sanitizedRenderRichInline } from "@/lib/furigana";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -1346,6 +1350,25 @@ function AudioScriptEditor({
           </div>
         );
       })}
+      {lines.length > 0 && (
+        <div className="ase-preview-box">
+          <div className="ase-preview-label">👁 Preview</div>
+          <div className="ase-preview-content">
+            {lines.map((line, idx) => {
+              if (line.text === "[SPACE]") return <br key={idx} />;
+              return (
+                <span
+                  key={idx}
+                  className="ase-preview-sentence"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizedRenderRichInline(applyScriptInlineMarkup(line.text)),
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
       <button type="button" className="ase-btn-add" onClick={addLine}>
         + Thêm dòng
       </button>
@@ -1374,6 +1397,33 @@ function AudioScriptField({ data, onChange }: { data: QData; onChange: (d: QData
   );
 }
 
+// Per-question audio script translation. Lives in `data.audio_translation`
+// (string, JSONB) — same storage pattern as passage `vi_translation`,
+// no top-level column / SELECT changes needed. Review reveals it
+// behind a /svg/translate.svg button next to the script box.
+function AudioTranslationField({ data, onChange }: { data: QData; onChange: (d: QData) => void }) {
+  const value = typeof data.audio_translation === "string" ? data.audio_translation : "";
+  return (
+    <>
+      <Fl
+        label="🇻🇳 Bản dịch tiếng Việt (script)"
+        hint="B / I / U / căn lề / size — hiện trong review khi user bấm nút dịch."
+      >
+        <RichTa
+          value={value}
+          onChange={(v) => onChange({ ...data, audio_translation: v })}
+          placeholder="Nhập bản dịch tiếng Việt của script..."
+          rows={5}
+        />
+      </Fl>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, background: C.surface }}>
+        <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 6 }}>Preview bản dịch</div>
+        {rRich(value)}
+      </div>
+    </>
+  );
+}
+
 function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
@@ -1393,6 +1443,7 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioTranslationField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1434,6 +1485,7 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioTranslationField data={data} onChange={onChange} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>Câu hỏi ({qs.length})</span>
         <button type="button" onClick={addQ} style={{ padding: "5px 14px", borderRadius: 7, border: `1.5px solid ${C.purple}`, background: C.purple+"15", color: C.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Thêm câu</button>
@@ -1481,6 +1533,7 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
         onChange={(v) => onChange({ ...data, audioUrl: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
+      <AudioTranslationField data={data} onChange={onChange} />
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
         {isN1OrN2Level(level) && (

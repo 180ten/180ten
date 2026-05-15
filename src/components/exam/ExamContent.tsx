@@ -15,7 +15,10 @@ import {
   type VocabEntry, type VocabSegment,
 } from "@/lib/vocabTag";
 import { extractGrammarSegments, stripGrammarTags, lookupGrammar, prefetchGrammar } from "@/lib/grammarTag";
-import { parseScriptLines, parseTimecode, type AudioScriptLine } from "@/lib/audioScript";
+import {
+  parseScriptLines, parseTimecode, applyScriptInlineMarkup,
+  type AudioScriptLine,
+} from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
 
 const NUMS = ["1", "2", "3", "4"];
@@ -1130,14 +1133,20 @@ function ReadingContent({
 // question owns its own <audio> ref so clicking a script line seeks
 // THAT question's clip, not some sibling player.
 function ListenAudioAndScript({
-  audioSrc, lines,
+  audioSrc, lines, audioTranslation,
 }: {
   audioSrc: string | null;
   lines: AudioScriptLine[];
+  audioTranslation: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [open, setOpen] = useState(false);
   const [activeLine, setActiveLine] = useState<number | null>(null);
+  // JP ↔ VI toggle, mirrors PassageBlock. Component is keyed per
+  // question at the call site, so state resets automatically when
+  // the user navigates between questions — no useEffect needed.
+  const [showVi, setShowVi] = useState(false);
+  const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
 
   function handleLineClick(idx: number, start: string) {
     const a = audioRef.current;
@@ -1147,7 +1156,7 @@ function ListenAudioAndScript({
     setActiveLine(idx);
   }
 
-  if (!audioSrc && lines.length === 0) return null;
+  if (!audioSrc && lines.length === 0 && !hasTranslation) return null;
   return (
     <div className="per-question-audio-wrap">
       {audioSrc && (
@@ -1159,8 +1168,23 @@ function ListenAudioAndScript({
           preload="metadata"
         />
       )}
-      {lines.length > 0 && (
-        <div className="audio-script-box">
+      {(lines.length > 0 || hasTranslation) && (
+        <div className="audio-script-box" style={{ position: "relative" }}>
+          {/* Reuses the passage-translate-btn class so JP/VI toggle
+              looks identical across reading + listening. The host
+              container needs position:relative for the absolute btn. */}
+          {hasTranslation && open && (
+            <button
+              type="button"
+              className={`passage-translate-btn${showVi ? " active" : ""}`}
+              onClick={() => setShowVi((v) => !v)}
+              title={showVi ? "Quay lại tiếng Nhật" : "Xem bản dịch tiếng Việt"}
+              aria-pressed={showVi}
+              aria-label={showVi ? "Hiện bản gốc tiếng Nhật" : "Hiện bản dịch tiếng Việt"}
+            >
+              <img src="/svg/translate.svg" alt="" width={18} height={18} aria-hidden />
+            </button>
+          )}
           <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
             <span>📝 Script</span>
             <button
@@ -1173,33 +1197,50 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            <div className="script-paragraph">
-              {lines.map((line, idx) => {
-                // [SPACE] rows are layout-only spacers admins added
-                // via the toolbar — render a hard line break with no
-                // click target / timecode.
-                if (line.text === "[SPACE]") return <br key={idx} />;
-                // *bold* → <strong>bold</strong> before the rich
-                // renderer runs; sanitizer keeps <strong> on its
-                // allowlist so the bold survives.
-                const html = sanitizedRenderRichInline(
-                  line.text.replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>"),
-                );
-                return (
-                  <span
-                    key={idx}
-                    className={`script-sentence${activeLine === idx ? " active" : ""}`}
-                    onClick={() => handleLineClick(idx, line.start)}
-                    title={line.start ? `▶ ${line.start}` : undefined}
-                    // sanitizedRenderRich emits a wrapping <div> (block) —
-                    // would force every sentence onto its own line. The
-                    // *Inline variant skips the wrapper while keeping
-                    // furigana / vocab / grammar tag rendering intact.
-                    dangerouslySetInnerHTML={{ __html: html }}
-                  />
-                );
-              })}
-            </div>
+            showVi && hasTranslation ? (
+              <div
+                style={{
+                  padding: "14px",
+                  fontSize: 15,
+                  lineHeight: 1.8,
+                  color: "#1a1917",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif",
+                }}
+              >
+                <VocabSegments
+                  text={audioTranslation!}
+                  renderText={sanitizedRenderRichInline}
+                />
+              </div>
+            ) : (
+              <div className="script-paragraph">
+                {lines.map((line, idx) => {
+                  // [SPACE] rows are layout-only spacers admins added
+                  // via the toolbar — render a hard line break with no
+                  // click target / timecode.
+                  if (line.text === "[SPACE]") return <br key={idx} />;
+                  // *bold*/_italic_ → <strong>/<em> before the rich
+                  // renderer runs; sanitizer keeps both on its
+                  // allowlist so the inline markup survives.
+                  const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
+                  return (
+                    <span
+                      key={idx}
+                      className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                      onClick={() => handleLineClick(idx, line.start)}
+                      title={line.start ? `▶ ${line.start}` : undefined}
+                      // sanitizedRenderRich emits a wrapping <div> (block) —
+                      // would force every sentence onto its own line. The
+                      // *Inline variant skips the wrapper while keeping
+                      // furigana / vocab / grammar tag rendering intact.
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  );
+                })}
+              </div>
+            )
           )}
         </div>
       )}
@@ -1295,12 +1336,22 @@ function ListeningContent({
         (typeof (q as { audioScript?: unknown }).audioScript === "string" && (q as { audioScript: string }).audioScript) ||
         null;
       const lines: AudioScriptLine[] = parseScriptLines(scriptRaw);
-      if (perQAudio || lines.length > 0) {
+      // VI translation lives in `data.audio_translation` (JSONB) —
+      // mirrors how passage `vi_translation` flows through with no
+      // top-level column. page.tsx flattens data so it's directly
+      // on the question object here.
+      const audioTranslation =
+        typeof (q as { audio_translation?: unknown }).audio_translation === "string"
+          ? (q as { audio_translation: string }).audio_translation
+          : null;
+      const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
+      if (perQAudio || lines.length > 0 || hasTranslation) {
         elems.push(
           <ListenAudioAndScript
             key={`${id}-audio-script`}
             audioSrc={perQAudio}
             lines={lines}
+            audioTranslation={audioTranslation}
           />,
         );
       }

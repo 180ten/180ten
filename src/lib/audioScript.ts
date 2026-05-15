@@ -56,3 +56,15 @@ export function parseTimecode(t: string): number {
   return parts[0] || 0;
 }
 
+/** Lightweight Markdown-ish inline markup for script line text:
+ *    *bold*    → <strong>bold</strong>
+ *    _italic_  → <em>italic</em>
+ *  Pre-applied before sanitizedRenderRichInline so the strong/em
+ *  tags survive the sanitizer's allowlist. Both delimiters are
+ *  unlikely to appear naturally in JLPT scripts (which use full-width
+ *  punctuation), so collisions are rare. */
+export function applyScriptInlineMarkup(text: string): string {
+  return String(text ?? "")
+    .replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>")
+    .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+}
