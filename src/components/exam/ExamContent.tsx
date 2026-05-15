@@ -797,7 +797,10 @@ function splitPassageNotes(text: string): {
   });
 
   return {
-    body: bodyLines.join("\n").trimEnd(),
+    // Collapse runs of 3+ newlines down to a single blank line so
+    // admin-typed extra spacing doesn't pile up against pre-wrap's
+    // already-loose default — keeps paragraph gaps consistent.
+    body: bodyLines.join("\n").trimEnd().replace(/\n{3,}/g, "\n\n"),
     notes,
   };
 }
