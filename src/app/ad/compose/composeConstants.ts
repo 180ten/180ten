@@ -274,6 +274,9 @@ export const mkSQ    = (): QData => ({ question: "", correct: "", wrongs: ["",""
 export const mkLQ    = (): QData => ({ orderNum: "", correct: "", wrongs: ["","",""] });
 export const mkLQS   = (): QData => ({ orderNum: "", correct: "", wrongs: ["",""] });
 export const mkLTQ   = (): QData => ({ orderNum: "", correct: "", wrongs: ["","",""] });
+// Fixed-choice listen mondai (概要理解 / 即時応答) — admin picks
+// the correct number via radio so we only ever store `correct`.
+export const mkLFixed = (): QData => ({ orderNum: "", correct: "" });
 
 export function mkDefault(id: string): QData {
   if (["kanji","bunmyaku","iikae","hyouki","yoho","bunpo1","bunpo2"].includes(id)) return mkBase();
@@ -283,10 +286,10 @@ export function mkDefault(id: string): QData {
     const n = ({ tan:1, chu:2, cho:3, shudai:3, joho:2 } as Record<string,number>)[id] || 1;
     return { x: "", y: "", passages: [{ text: "", questions: Array.from({length:n}, mkSQ) }] };
   }
-  if (id === "listen_kadai" || id === "listen_point" || id === "listen_gaiyou" || id === "listen_hatsuwa")
+  if (id === "listen_kadai" || id === "listen_point" || id === "listen_hatsuwa")
     return { audioUrl: "", questions: [mkLQ()] };
-  if (id === "listen_sokuji")
-    return { audioUrl: "", questions: [mkLQS()] };
+  if (id === "listen_gaiyou" || id === "listen_sokuji")
+    return { audioUrl: "", questions: [mkLFixed()] };
   if (id === "listen_togo")
     return { audioUrl: "", type1: { mainQuestion: "", orderNum: "", correct: "", wrongs: ["","",""], explanation: "", vocab: "", grammar: "" }, type2: { mainQuestion: "", questions: [mkLTQ(), mkLTQ()] } };
   if (id === "bjt_1_1" || id === "bjt_1_2")

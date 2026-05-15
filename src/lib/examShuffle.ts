@@ -17,6 +17,24 @@ export const PASSAGE_TYPES = new Set<string>([
 const SIMPLE_BJT_TYPES = new Set<string>([
   "bjt_1_1", "bjt_1_2", "bjt_2_1", "bjt_2_2",
 ]);
+// Listen mondai that print no choice text — learner just hears
+// "1番…2番…" and picks a number, so admins choose the correct
+// position via radio in ComposeTab and we render fixed
+// `["1","2",…]` choices like bjt_1_3 / bjt_2_3.
+const FIXED_CHOICE_LISTEN_TYPES = new Set<string>([
+  "listen_gaiyou", "listen_sokuji",
+]);
+
+/** N4/N5 概要理解 prints 1から3 on the test paper; everywhere else
+ *  uses 4 choices. listen_sokuji is always 3. */
+function fixedChoiceCount(type: string, level: string | null | undefined): 3 | 4 {
+  if (type === "listen_sokuji") return 3;
+  if (type === "listen_gaiyou") {
+    const lv = String(level ?? "").toUpperCase();
+    return (lv === "N4" || lv === "N5") ? 3 : 4;
+  }
+  return 4; // safe default; never reached given current callers
+}
 
 // ─── SubQ shape (loose) ──────────────────────────────────────────────
 export interface SubQ {
@@ -293,10 +311,21 @@ export function sanitizeQuestion(
     }
 
   } else if (type.startsWith("listen_")) {
+    const isFixed = FIXED_CHOICE_LISTEN_TYPES.has(type);
+    const fixedN = isFixed ? fixedChoiceCount(type, q.level) : 0;
     const subQs = (data.questions as SubQ[]) ?? [];
     subQs.forEach((sq, i) => {
       const key = `${id}-${i}`;
-      applyShuffle(sq, userId, examId, key, posMap);
+      if (isFixed) {
+        // Fixed `["1","2",…]` choices — admin picked the correct
+        // number via radio. Mirror bjt_1_3: drop correct/wrongs so
+        // the client never sees the answer.
+        sq.choices = Array.from({ length: fixedN }, (_, n) => String(n + 1));
+        delete sq.correct;
+        delete sq.wrongs;
+      } else {
+        applyShuffle(sq, userId, examId, key, posMap);
+      }
       slotKeys.push(key);
     });
   }
@@ -403,6 +432,12 @@ export function expectedPosForSlot(
     const i = parseInt(m[1], 10);
     const sq = ((data.questions as SubQ[]) ?? [])[i];
     if (!sq) return null;
+    // Fixed-choice listen mondai store correct as "1".."N" directly,
+    // same shape as bjt_1_3. No deterministic shuffle, no posMap.
+    if (FIXED_CHOICE_LISTEN_TYPES.has(type)) {
+      const cn = parseInt(String(sq.correct ?? ""), 10);
+      return isNaN(cn) || cn < 1 ? 0 : cn - 1;
+    }
     const n = nChoices(sq.correct, sq.wrongs);
     return posMap?.[slotKey] ?? deterministicPos(userId, examId, slotKey, n);
   }

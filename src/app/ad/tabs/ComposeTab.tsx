@@ -17,7 +17,7 @@ import {
   C, iBase, taBase,
   getComposeTypeGroups, getFixedHeaderText, isN1OrN2Level, isN4OrN5Level, isN3Level,
   TYPE_MAP, GROUP_MAP, ALL_TYPES,
-  mkDefault, mkSQ, mkLQ, mkLQS, mkLTQ, normalizeBjtSogoChokaiQuestion,
+  mkDefault, mkSQ, mkLQ, mkLQS, mkLTQ, mkLFixed, normalizeBjtSogoChokaiQuestion,
   BJT_FORM_FIXED_JP,
   type TypeDef, type TypeGroup, type QData, type ComposeQuestion,
 } from "@/app/ad/compose/composeConstants";
@@ -476,6 +476,30 @@ function WrongAnswers({ values, onChange, count = 3 }: {
         </div>
       ))}
     </Fl>
+  );
+}
+
+// Radio group for listen mondai whose test paper prints no choice
+// text (概要理解 / 即時応答). Admin picks the correct number; the
+// pipeline in lib/examShuffle stamps fixed `["1","2",…]` choices.
+function FixedChoiceRadio({
+  value, count, name, onChange,
+}: { value: string; count: number; name: string; onChange: (v: string) => void }) {
+  return (
+    <div className="radio-answer-group">
+      {Array.from({ length: count }, (_, i) => String(i + 1)).map((n) => (
+        <label key={n} className="radio-answer-option">
+          <input
+            type="radio"
+            name={name}
+            value={n}
+            checked={value === n}
+            onChange={() => onChange(n)}
+          />
+          <span className="radio-answer-label">{n}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 
@@ -1430,8 +1454,13 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
   const n4n5 = isN4OrN5Level(level), n3 = isN3Level(level);
   const wrongCount = ((n4n5 && typeId==="listen_gaiyou") || (n3 && typeId==="listen_hatsuwa")) ? 2 : 3;
   const allowImage = (n4n5 && (typeId==="listen_kadai"||typeId==="listen_gaiyou")) || (n3 && typeId==="listen_hatsuwa");
+  // 概要理解 prints no choices on the test paper — admin only picks
+  // the correct number (1から3 at N4/N5, 1から4 elsewhere). Other
+  // mondai routed through this form keep the legacy text+wrongs UI.
+  const fixedChoice = typeId === "listen_gaiyou";
+  const fixedCount: 3 | 4 = fixedChoice ? (n4n5 ? 3 : 4) : 4;
   const qs = (data.questions as QData[]) || [];
-  const addQ = () => onChange({ ...data, questions: [...qs, wrongCount===2?mkLQS():mkLQ()] });
+  const addQ = () => onChange({ ...data, questions: [...qs, fixedChoice ? mkLFixed() : (wrongCount===2?mkLQS():mkLQ())] });
   const rmQ = (i: number) => onChange({ ...data, questions: qs.filter((_,j) => j!==i) });
   const uQ = (i: number, k: string, v: unknown) => { const a=[...qs]; a[i]={...a[i],[k]:v}; if(k==="wrongs"&&wrongCount===2) a[i].wrongs=(v as string[]).slice(0,2); onChange({...data,questions:a}); };
   return (
@@ -1455,8 +1484,21 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
             {qs.length>1 && <button type="button" onClick={() => rmQ(i)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
           <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
-          <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uQ(i,"correct",v)} placeholder="正解" /></Fl>
-          <WrongAnswers values={(q.wrongs as string[])||["","",""]} onChange={v => uQ(i,"wrongs",v)} count={wrongCount} />
+          {fixedChoice ? (
+            <Fl label="Đáp án đúng" hint={`Chọn 1 trong ${fixedCount} lựa chọn (1から${fixedCount}). Đề thi không in đáp án — học viên chỉ nghe và chọn số.`}>
+              <FixedChoiceRadio
+                value={String(q.correct||"")}
+                count={fixedCount}
+                name={`correct-gaiyou-${i}`}
+                onChange={v => uQ(i,"correct",v)}
+              />
+            </Fl>
+          ) : (
+            <>
+              <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uQ(i,"correct",v)} placeholder="正解" /></Fl>
+              <WrongAnswers values={(q.wrongs as string[])||["","",""]} onChange={v => uQ(i,"wrongs",v)} count={wrongCount} />
+            </>
+          )}
           {allowImage && (
             <Fl label="Ảnh minh hoạ (URL)" hint="N4/N5: 課題・発話表現 | N3: 発話表現のみ">
               <Inp value={String(q.imageUrl||"")} onChange={v => uQ(i,"imageUrl",v)} placeholder="https://...jpg/png" noBracketBtn />
@@ -1472,8 +1514,10 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
 function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
+  // 即時応答 prints no choices on the test paper — admin only picks
+  // the correct number (always 1から3 across all levels).
   const qs = (data.questions as QData[]) || [];
-  const addQ = () => onChange({ ...data, questions: [...qs, mkLQS()] });
+  const addQ = () => onChange({ ...data, questions: [...qs, mkLFixed()] });
   const rmQ = (i: number) => onChange({ ...data, questions: qs.filter((_,j) => j!==i) });
   const uQ = (i: number, k: string, v: unknown) => { const a=[...qs]; a[i]={...a[i],[k]:v}; onChange({...data,questions:a}); };
   return (
@@ -1497,14 +1541,13 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
             {qs.length>1 && <button type="button" onClick={() => rmQ(i)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16 }}>✕</button>}
           </div>
           <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uQ(i,"orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
-          <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uQ(i,"correct",v)} placeholder="正解" /></Fl>
-          <Fl label="Đáp án sai" hint="2 lựa chọn">
-            {[0,1].map(si => (
-              <div key={si} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: C.red, fontWeight: 700, width: 14 }}>{si+1}</span>
-                <Inp value={((q.wrongs as string[])||["",""])[si]||""} onChange={v => { const a=[...((q.wrongs as string[])||["",""])]; a[si]=v; uQ(i,"wrongs",a); }} placeholder={`Sai ${si+1}`} />
-              </div>
-            ))}
+          <Fl label="Đáp án đúng" hint="Chọn 1 trong 3 lựa chọn (1から3). Đề thi không in đáp án — học viên chỉ nghe và chọn số.">
+            <FixedChoiceRadio
+              value={String(q.correct||"")}
+              count={3}
+              name={`correct-sokuji-${i}`}
+              onChange={v => uQ(i,"correct",v)}
+            />
           </Fl>
           <ExplainFields data={q} onChange={(k,v) => uQ(i,k,v)} qKey={(String(q.id||q.question||"q"))+"-"+i} />
         </div>

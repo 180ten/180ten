@@ -1015,6 +1015,15 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-preview-content{font-size:14px;line-height:1.8;color:var(--text);font-family:'Noto Sans JP',sans-serif;}
 .ase-preview-sentence{display:inline;}
 
+/* ── ComposeTab: fixed-choice radio (listen_gaiyou / listen_sokuji) ── */
+.radio-answer-group{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:8px 0 4px;}
+.radio-answer-option{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;color:var(--text);padding:6px 12px;border:1.5px solid var(--border2);border-radius:8px;background:var(--white);transition:background .15s,border-color .15s;}
+.radio-answer-option:hover{background:var(--surface);border-color:var(--text);}
+.radio-answer-option:has(input:checked){background:var(--accent);border-color:var(--accent);color:#fff;}
+.radio-answer-option input[type=radio]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:0;}
+.radio-answer-option:has(input:checked) input[type=radio]{accent-color:#fff;}
+.radio-answer-label{font-weight:700;font-size:16px;min-width:14px;text-align:center;line-height:1;font-family:'Noto Sans JP',sans-serif;}
+
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
 .compose-tag-btn.vocab{border-color:#f97316;color:#f97316;background:#fff8f5;}
