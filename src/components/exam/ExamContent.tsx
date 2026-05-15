@@ -1583,7 +1583,7 @@ export default function ExamContent({
             onClick={() => onSectionChange?.("read")}
             aria-pressed={sec === "read"}
           >
-            <img src="/svg/reading.svg" alt="" width={20} height={20} aria-hidden />
+            <img src="/svg/meta-read.svg" alt="" width={20} height={20} aria-hidden />
             読解
             <span className="content-tab-count">{readQs.length}</span>
           </button>
@@ -1593,7 +1593,7 @@ export default function ExamContent({
             onClick={() => onSectionChange?.("listen")}
             aria-pressed={sec === "listen"}
           >
-            <img src="/svg/listening.svg" alt="" width={20} height={20} aria-hidden />
+            <img src="/svg/meta-listen.svg" alt="" width={20} height={20} aria-hidden />
             聴解
             <span className="content-tab-count">{listenQs.length}</span>
           </button>

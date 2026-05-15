@@ -691,7 +691,7 @@ export default function MockTestTab({
                       className={`review-tab-btn${reviewTab === "dokkai" ? " active" : ""}`}
                       onClick={() => handleReviewTabChange("dokkai")}
                     >
-                      <img src="/svg/reading.svg" alt="" width={16} height={16} aria-hidden />
+                      <img src="/svg/meta-read.svg" alt="" width={16} height={16} aria-hidden />
                       読解
                     </button>
                     <button
@@ -699,7 +699,7 @@ export default function MockTestTab({
                       className={`review-tab-btn${reviewTab === "choukai" ? " active" : ""}`}
                       onClick={() => handleReviewTabChange("choukai")}
                     >
-                      <img src="/svg/listening.svg" alt="" width={16} height={16} aria-hidden />
+                      <img src="/svg/meta-listen.svg" alt="" width={16} height={16} aria-hidden />
                       聴解
                     </button>
                   </div>
