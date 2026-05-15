@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Skeleton } from "boneyard-js/react";
 import ExamContent, { QGrid, type AnkiCardInput } from "@/components/exam/ExamContent";
 import TargetPracticeModal, { type TargetConfig } from "@/components/modals/TargetPracticeModal";
@@ -147,9 +147,18 @@ export default function MockTestTab({
   const [viewMode, setViewMode]     = useState<"grid" | "list">("grid");
   const [page, setPage]             = useState(1);
   const [targetOpen, setTargetOpen] = useState(false);
-  // Review-mode sidebar tab — only meaningful after submit. Lets the user
-  // browse the QGrid by 読解 / 聴解 instead of one big mixed list.
+  // Review-mode 読解/聴解 tab — only meaningful after submit. Drives
+  // both the sidebar QGrid filter AND the main content area's
+  // section switcher so the two stay in sync.
   const [reviewTab, setReviewTab] = useState<"dokkai" | "choukai">("dokkai");
+  const handleReviewTabChange = useCallback((tab: "dokkai" | "choukai") => {
+    setReviewTab(tab);
+    // Snap both panels back to top on switch — easy to lose your
+    // place mid-scroll otherwise. Existence-checked because the
+    // sidebar can be hidden on small viewports.
+    document.getElementById("ev-qgrid")?.scrollTo({ top: 0, behavior: "smooth" });
+    document.getElementById("ev-content")?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
   // Collapsible sidebar. Desktop (≥980 px) defaults open; below that the
   // existing CSS hid the sidebar entirely — now it slides in as an
   // overlay when the user taps the toggle.
@@ -637,6 +646,8 @@ export default function MockTestTab({
                 audioUrl={examAudioUrl}
                 phase={examPhase === "listen" ? "listen" : "read"}
                 onAddToAnki={onAddToAnki}
+                activeSection={reviewTab === "dokkai" ? "read" : "listen"}
+                onSectionChange={(s) => handleReviewTabChange(s === "read" ? "dokkai" : "choukai")}
               />
             )}
           </div>
@@ -678,18 +689,12 @@ export default function MockTestTab({
                     <button
                       type="button"
                       className={`review-tab-btn${reviewTab === "dokkai" ? " active" : ""}`}
-                      onClick={() => {
-                        setReviewTab("dokkai");
-                        document.getElementById("ev-qgrid")?.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
+                      onClick={() => handleReviewTabChange("dokkai")}
                     >📖 読解</button>
                     <button
                       type="button"
                       className={`review-tab-btn${reviewTab === "choukai" ? " active" : ""}`}
-                      onClick={() => {
-                        setReviewTab("choukai");
-                        document.getElementById("ev-qgrid")?.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
+                      onClick={() => handleReviewTabChange("choukai")}
                     >🎧 聴解</button>
                   </div>
                 )}

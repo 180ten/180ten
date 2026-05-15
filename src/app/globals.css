@@ -663,6 +663,16 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .review-tab-btn{flex:1;padding:8px 4px;border:none;background:none;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
 .review-tab-btn:hover{color:var(--text);}
 .review-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* Main-content twin of .review-tab-switcher — sized up because it
+   sits in the wider reading area, with a bubble count badge so the
+   admin knows how many items are in each section at a glance. */
+.content-section-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin:8px 0 16px;}
+.content-tab-btn{flex:1;padding:10px 16px;border:none;background:none;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;display:flex;align-items:center;justify-content:center;gap:6px;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
+.content-tab-btn:hover{color:var(--text);}
+.content-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.content-tab-count{font-size:11px;background:var(--border);border-radius:999px;padding:1px 7px;font-weight:700;line-height:1.4;}
+.content-tab-btn.active .content-tab-count{background:#fee2d5;color:var(--accent);}
 .sidebar-legend{display:flex;flex-direction:column;gap:7px;margin-bottom:14px;}
 .sidebar-legend-item{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text);}
 .sidebar-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}

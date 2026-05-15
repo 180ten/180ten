@@ -494,6 +494,12 @@ interface ExamContentProps {
   audioUrl?: string;
   phase: "read" | "listen";
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
+  /** Review-mode 読解/聴解 selector — lifted to MockTestTab so the
+   *  sidebar tab and the new in-content tab switcher share state.
+   *  Optional: when omitted (or only one section is non-empty) the
+   *  switcher hides and content falls back to the prior behaviour. */
+  activeSection?: "read" | "listen";
+  onSectionChange?: (section: "read" | "listen") => void;
 }
 
 // ── Choice button ──
@@ -1456,6 +1462,7 @@ function ListeningContent({
 // ── Main ExamContent ──
 export default function ExamContent({
   questions, answers, answerKey, keyTypeMap, submitted, onPick, audioUrl, phase, onAddToAnki,
+  activeSection, onSectionChange,
 }: ExamContentProps) {
   const readQs = useMemo(
     () => questions.filter((q) => !String(q.type ?? "").startsWith("listen")),
@@ -1560,15 +1567,51 @@ export default function ExamContent({
       </>
     );
   }
-  // Review mode: after submit, render reading + listening stacked so users
-  // can review every answer in one scroll. During the active read phase only
-  // reading is shown.
-  if (submitted && listenQs.length > 0) {
-    console.log("[ExamContent] review mode → rendering reading + listening");
+  // Review mode: when both sections have questions, show a tab bar
+  // so the user filters reading vs listening here too — and only
+  // render the active half (the sidebar QGrid filters in lockstep
+  // via the shared activeSection state lifted up to MockTestTab).
+  if (submitted && readQs.length > 0 && listenQs.length > 0) {
+    const sec = activeSection ?? "read";
+    console.log("[ExamContent] review mode → tab", sec);
     return (
       <>
-        <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
-          keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
+        <div className="content-section-tabs">
+          <button
+            type="button"
+            className={`content-tab-btn${sec === "read" ? " active" : ""}`}
+            onClick={() => onSectionChange?.("read")}
+            aria-pressed={sec === "read"}
+          >
+            📖 読解
+            <span className="content-tab-count">{readQs.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`content-tab-btn${sec === "listen" ? " active" : ""}`}
+            onClick={() => onSectionChange?.("listen")}
+            aria-pressed={sec === "listen"}
+          >
+            🎧 聴解
+            <span className="content-tab-count">{listenQs.length}</span>
+          </button>
+        </div>
+        {sec === "read" ? (
+          <ReadingContent questions={readQs} answers={answers} answerKey={answerKey}
+            keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} onAddToAnki={onAddToAnki} />
+        ) : (
+          <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
+            keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
+        )}
+        {popupNode}
+      </>
+    );
+  }
+  // Review with only one section (or read-phase): no tab bar needed,
+  // just render whichever content the prop dictates.
+  if (submitted && listenQs.length > 0) {
+    return (
+      <>
         <ListeningContent questions={listenQs} answers={answers} answerKey={answerKey}
           keyTypeMap={keyTypeMap} submitted={submitted} onPick={onPick} audioUrl={audioUrl} onAddToAnki={onAddToAnki} />
         {popupNode}
