@@ -1169,22 +1169,7 @@ function ListenAudioAndScript({
         />
       )}
       {(lines.length > 0 || hasTranslation) && (
-        <div className="audio-script-box" style={{ position: "relative" }}>
-          {/* Reuses the passage-translate-btn class so JP/VI toggle
-              looks identical across reading + listening. The host
-              container needs position:relative for the absolute btn. */}
-          {hasTranslation && open && (
-            <button
-              type="button"
-              className={`passage-translate-btn${showVi ? " active" : ""}`}
-              onClick={() => setShowVi((v) => !v)}
-              title={showVi ? "Quay lại tiếng Nhật" : "Xem bản dịch tiếng Việt"}
-              aria-pressed={showVi}
-              aria-label={showVi ? "Hiện bản gốc tiếng Nhật" : "Hiện bản dịch tiếng Việt"}
-            >
-              <img src="/svg/translate.svg" alt="" width={18} height={18} aria-hidden />
-            </button>
-          )}
+        <div className="audio-script-box">
           <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
             <span>📝 Script</span>
             <button
@@ -1197,50 +1182,73 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            showVi && hasTranslation ? (
-              <div
-                style={{
-                  padding: "14px",
-                  fontSize: 15,
-                  lineHeight: 1.8,
-                  color: "#1a1917",
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere",
-                  fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif",
-                }}
-              >
-                <VocabSegments
-                  text={audioTranslation!}
-                  renderText={sanitizedRenderRichInline}
-                />
-              </div>
-            ) : (
-              <div className="script-paragraph">
-                {lines.map((line, idx) => {
-                  // [SPACE] rows are layout-only spacers admins added
-                  // via the toolbar — render a hard line break with no
-                  // click target / timecode.
-                  if (line.text === "[SPACE]") return <br key={idx} />;
-                  // *bold*/_italic_ → <strong>/<em> before the rich
-                  // renderer runs; sanitizer keeps both on its
-                  // allowlist so the inline markup survives.
-                  const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
-                  return (
-                    <span
-                      key={idx}
-                      className={`script-sentence${activeLine === idx ? " active" : ""}`}
-                      onClick={() => handleLineClick(idx, line.start)}
-                      title={line.start ? `▶ ${line.start}` : undefined}
-                      // sanitizedRenderRich emits a wrapping <div> (block) —
-                      // would force every sentence onto its own line. The
-                      // *Inline variant skips the wrapper while keeping
-                      // furigana / vocab / grammar tag rendering intact.
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
-                  );
-                })}
-              </div>
-            )
+            <div style={{ position: "relative" }}>
+              {/* JP/VI toggle anchored to the content area, not the
+                  header. Reuses .passage-translate-btn so the affordance
+                  matches the reading-passage version. */}
+              {hasTranslation && (
+                <button
+                  type="button"
+                  className={`passage-translate-btn${showVi ? " active" : ""}`}
+                  onClick={() => setShowVi((v) => !v)}
+                  title={showVi ? "Quay lại tiếng Nhật" : "Xem bản dịch tiếng Việt"}
+                  aria-pressed={showVi}
+                  aria-label={showVi ? "Hiện bản gốc tiếng Nhật" : "Hiện bản dịch tiếng Việt"}
+                  style={{ top: 8, right: 8, zIndex: 2 }}
+                >
+                  <img src="/svg/translate.svg" alt="" width={18} height={18} aria-hidden />
+                </button>
+              )}
+              {showVi && hasTranslation ? (
+                <div
+                  style={{
+                    // Right padding leaves room for the absolute toggle
+                    // button so long lines don't slide under it.
+                    padding: "14px 52px 14px 14px",
+                    fontSize: 15,
+                    lineHeight: 1.8,
+                    color: "#1a1917",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif",
+                  }}
+                >
+                  <VocabSegments
+                    text={audioTranslation!}
+                    renderText={sanitizedRenderRichInline}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="script-paragraph"
+                  style={hasTranslation ? { paddingRight: 52 } : undefined}
+                >
+                  {lines.map((line, idx) => {
+                    // [SPACE] rows are layout-only spacers admins added
+                    // via the toolbar — render a hard line break with no
+                    // click target / timecode.
+                    if (line.text === "[SPACE]") return <br key={idx} />;
+                    // *bold*/_italic_ → <strong>/<em> before the rich
+                    // renderer runs; sanitizer keeps both on its
+                    // allowlist so the inline markup survives.
+                    const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
+                    return (
+                      <span
+                        key={idx}
+                        className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                        onClick={() => handleLineClick(idx, line.start)}
+                        title={line.start ? `▶ ${line.start}` : undefined}
+                        // sanitizedRenderRich emits a wrapping <div> (block) —
+                        // would force every sentence onto its own line. The
+                        // *Inline variant skips the wrapper while keeping
+                        // furigana / vocab / grammar tag rendering intact.
+                        dangerouslySetInnerHTML={{ __html: html }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
