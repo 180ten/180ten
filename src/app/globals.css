@@ -660,7 +660,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .sidebar-card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:clamp(10px,1.2vw,16px);box-shadow:0 1px 3px rgba(0,0,0,.03);min-width:0;}
 .sidebar-title{font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
 .review-tab-switcher{display:flex;border-bottom:2px solid var(--border);margin-bottom:10px;}
-.review-tab-btn{flex:1;padding:8px 4px;border:none;background:none;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
+.review-tab-btn{flex:1;padding:8px 4px;border:none;background:none;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:6px;line-height:1;}
+.review-tab-btn img{display:block;}
 .review-tab-btn:hover{color:var(--text);}
 .review-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
 
