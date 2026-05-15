@@ -1182,47 +1182,32 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            <div style={{ position: "relative" }}>
-              {/* JP/VI toggle anchored to the content area, not the
-                  header. Reuses .passage-translate-btn so the affordance
-                  matches the reading-passage version. */}
+            <div className={`script-content-wrap${hasTranslation ? " has-translation" : ""}`}>
+              {/* JP/VI toggle anchored to the content area. Reuses
+                  .passage-translate-btn for affordance parity with
+                  the reading-passage version; --sm modifier shrinks
+                  it ~20% to fit the more compact script chrome. */}
               {hasTranslation && (
                 <button
                   type="button"
-                  className={`passage-translate-btn${showVi ? " active" : ""}`}
+                  className={`passage-translate-btn passage-translate-btn--sm${showVi ? " active" : ""}`}
                   onClick={() => setShowVi((v) => !v)}
                   title={showVi ? "Quay lại tiếng Nhật" : "Xem bản dịch tiếng Việt"}
                   aria-pressed={showVi}
                   aria-label={showVi ? "Hiện bản gốc tiếng Nhật" : "Hiện bản dịch tiếng Việt"}
-                  style={{ top: 8, right: 8, zIndex: 2 }}
                 >
-                  <img src="/svg/translate.svg" alt="" width={18} height={18} aria-hidden />
+                  <img src="/svg/translate.svg" alt="" width={14} height={14} aria-hidden />
                 </button>
               )}
               {showVi && hasTranslation ? (
-                <div
-                  style={{
-                    // Right padding leaves room for the absolute toggle
-                    // button so long lines don't slide under it.
-                    padding: "14px 52px 14px 14px",
-                    fontSize: 15,
-                    lineHeight: 1.8,
-                    color: "#1a1917",
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere",
-                    fontFamily: "'Be Vietnam Pro','Noto Sans JP',sans-serif",
-                  }}
-                >
+                <div className="script-vi-content">
                   <VocabSegments
                     text={audioTranslation!}
                     renderText={sanitizedRenderRichInline}
                   />
                 </div>
               ) : (
-                <div
-                  className="script-paragraph"
-                  style={hasTranslation ? { paddingRight: 52 } : undefined}
-                >
+                <div className="script-paragraph">
                   {lines.map((line, idx) => {
                     // [SPACE] rows are layout-only spacers admins added
                     // via the toolbar — render a hard line break with no

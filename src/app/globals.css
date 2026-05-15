@@ -337,6 +337,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .passage-translate-btn:hover{border-color:var(--accent);background:#fff8f5;}
 .passage-translate-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
 .passage-translate-btn.active img{filter:brightness(0) invert(1);}
+/* ~20% smaller variant used by the script box where the chrome is
+   tighter than reading-passage cards. */
+.passage-translate-btn--sm{width:27px;height:27px;border-radius:7px;top:8px;right:8px;}
 .passage-card-body{flex:1;min-height:0;padding-top:2px;color:#171615;font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
 .passage-card-body > div{font-size:var(--passage-font-size)!important;line-height:var(--passage-line-height)!important;}
 .passage-card-body ruby rt{font-size:.58em;color:#3f3a34;font-weight:600;}
@@ -933,7 +936,17 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 /* Script as flowing paragraph — each sentence is an inline span you
    can click to seek the matching audioRef. Timestamp lives in the
    `title` tooltip so the prose isn't visually broken up. */
-.script-paragraph{padding:12px 14px;font-size:15px;line-height:1.9;color:var(--text);font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;border-top:1px solid var(--border);}
+/* Wrapper around the script body — owns the toggle's anchor point
+   and the right-padding shift so JP / VI panes share identical
+   spacing. */
+.script-content-wrap{position:relative;}
+.script-content-wrap.has-translation .script-paragraph,
+.script-content-wrap.has-translation .script-vi-content{padding-right:52px;}
+/* JP and VI bodies share padding + size + line-height; only the
+   font stack differs so each language uses its preferred face. */
+.script-paragraph,.script-vi-content{padding:14px;font-size:15px;line-height:1.8;color:var(--text);}
+.script-paragraph{font-family:'Noto Sans JP','Be Vietnam Pro',sans-serif;}
+.script-vi-content{font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;}
 .script-sentence{cursor:pointer;border-radius:3px;padding:1px 2px;transition:background .15s;display:inline;}
 .script-sentence:hover{background:#e0f2fe;}
 .script-sentence.active{background:#bae6fd;font-weight:500;}
