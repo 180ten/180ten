@@ -8,7 +8,9 @@ interface BreakOverlayProps {
 export default function BreakOverlay({ visible, timeLeft, onStartListening }: BreakOverlayProps) {
   return (
     <div id="break-overlay" className={`break-overlay${visible ? "" : " hidden"}`}>
-      <div className="break-emoji">☕</div>
+      <div className="break-emoji">
+        <img src="/svg/break.svg" alt="" width={96} height={96} aria-hidden />
+      </div>
       <div className="break-title">Nghỉ giữa giờ</div>
       <div className="break-sub">
         Bạn đã hoàn thành <strong>Phần Đọc hiểu</strong>. Hãy nghỉ ngơi trước khi bắt đầu Phần Nghe hiểu.
