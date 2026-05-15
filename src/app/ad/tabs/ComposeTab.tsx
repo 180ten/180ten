@@ -2294,12 +2294,239 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
   );
 }
 
+// ─── Full-exam Excel export / import ──────────────────────────────
+// One sheet per question type. Every sheet's first column is
+// `__type__` carrying the type id verbatim, so import doesn't have
+// to guess from the (translated) sheet name. Simple types
+// (vocab/grammar/listen) get human-friendly columns; nested shapes
+// (passages, listen_togo) round-trip via a JSON column so admins
+// don't lose data even if a future type adds nested fields.
+const FX_SIMPLE_VG_TYPES   = new Set<string>(["kanji","bunmyaku","iikae","yoho","hyouki","bunpo1","bunpo2"]);
+const FX_LISTEN_TEXT_TYPES = new Set<string>(["listen_kadai","listen_point","listen_hatsuwa"]);
+const FX_LISTEN_FIXED_TYPES= new Set<string>(["listen_gaiyou","listen_sokuji"]);
+
+type FxRow = (string|number|null)[];
+
+function fxAudioUrl(q: ComposeQuestion): string {
+  return String((q as { audio_url?: string }).audio_url ?? (q as { audioUrl?: string }).audioUrl ?? "");
+}
+function fxAudioScript(q: ComposeQuestion): string {
+  return String((q as { audio_script?: string }).audio_script ?? (q as { audioScript?: string }).audioScript ?? "");
+}
+function fxStr(v: unknown): string { return String(v ?? ""); }
+
+function fxBuildSimpleSheet(type: string, qs: ComposeQuestion[]): FxRow[] {
+  const header = ["__type__","id","order_index","question","correct","wrong1","wrong2","wrong3","explanation","vocab","grammar"];
+  const rows: FxRow[] = [header];
+  qs.forEach((q, i) => {
+    const wrongs = (q.wrongs as string[]) ?? [];
+    rows.push([
+      type, fxStr(q.id), q.order_index ?? i,
+      fxStr(q.question), fxStr(q.correct),
+      fxStr(wrongs[0]), fxStr(wrongs[1]), fxStr(wrongs[2]),
+      fxStr(q.explanation), fxStr(q.vocab), fxStr(q.grammar),
+    ]);
+  });
+  return rows;
+}
+
+function fxBuildListenTextSheet(type: string, qs: ComposeQuestion[]): FxRow[] {
+  const header = ["__type__","q_id","order_index","audio_url","audio_script_json","audio_translation",
+                  "sub_idx","question","image_url","correct","wrong1","wrong2","wrong3","explanation","vocab","grammar"];
+  const rows: FxRow[] = [header];
+  qs.forEach((q, i) => {
+    const audioUrl = fxAudioUrl(q);
+    const audioScript = fxAudioScript(q);
+    const audioTranslation = fxStr((q as { audio_translation?: string }).audio_translation);
+    const subQs = (q.questions as Record<string, unknown>[]) ?? [];
+    if (subQs.length === 0) {
+      rows.push([type, fxStr(q.id), q.order_index ?? i, audioUrl, audioScript, audioTranslation,
+                 0,"","","","","","","","",""]);
+      return;
+    }
+    subQs.forEach((sq, idx) => {
+      const wrongs = (sq.wrongs as string[]) ?? [];
+      rows.push([
+        type, fxStr(q.id), q.order_index ?? i,
+        idx === 0 ? audioUrl : "", idx === 0 ? audioScript : "", idx === 0 ? audioTranslation : "",
+        idx, fxStr(sq.question), fxStr(sq.imageUrl),
+        fxStr(sq.correct), fxStr(wrongs[0]), fxStr(wrongs[1]), fxStr(wrongs[2]),
+        fxStr(sq.explanation), fxStr(sq.vocab), fxStr(sq.grammar),
+      ]);
+    });
+  });
+  return rows;
+}
+
+function fxBuildListenFixedSheet(type: string, qs: ComposeQuestion[]): FxRow[] {
+  const header = ["__type__","q_id","order_index","audio_url","audio_script_json","audio_translation",
+                  "sub_idx","correct","explanation","vocab","grammar"];
+  const rows: FxRow[] = [header];
+  qs.forEach((q, i) => {
+    const audioUrl = fxAudioUrl(q);
+    const audioScript = fxAudioScript(q);
+    const audioTranslation = fxStr((q as { audio_translation?: string }).audio_translation);
+    const subQs = (q.questions as Record<string, unknown>[]) ?? [];
+    if (subQs.length === 0) {
+      rows.push([type, fxStr(q.id), q.order_index ?? i, audioUrl, audioScript, audioTranslation, 0,"","","",""]);
+      return;
+    }
+    subQs.forEach((sq, idx) => {
+      rows.push([
+        type, fxStr(q.id), q.order_index ?? i,
+        idx === 0 ? audioUrl : "", idx === 0 ? audioScript : "", idx === 0 ? audioTranslation : "",
+        idx, fxStr(sq.correct), fxStr(sq.explanation), fxStr(sq.vocab), fxStr(sq.grammar),
+      ]);
+    });
+  });
+  return rows;
+}
+
+function fxBuildJsonSheet(type: string, qs: ComposeQuestion[]): FxRow[] {
+  // Catch-all for nested shapes (passages, listen_togo, BJT). data_json
+  // preserves the entire payload so round-trip is loss-less.
+  const header = ["__type__","id","order_index","audio_url","audio_script_json","data_json"];
+  const rows: FxRow[] = [header];
+  qs.forEach((q, i) => {
+    // Strip the audio fields out of data_json — they live in their
+    // own columns, no need to duplicate them.
+    const data: Record<string, unknown> = {};
+    Object.entries(q as Record<string, unknown>).forEach(([k, v]) => {
+      if (["id","exam_id","type","level","order_index","audio_url","audio_script","audioUrl","audioScript"].includes(k)) return;
+      data[k] = v;
+    });
+    rows.push([
+      type, fxStr(q.id), q.order_index ?? i,
+      fxAudioUrl(q), fxAudioScript(q),
+      JSON.stringify(data),
+    ]);
+  });
+  return rows;
+}
+
+function fxBuildSheet(type: string, qs: ComposeQuestion[]): FxRow[] {
+  if (FX_SIMPLE_VG_TYPES.has(type))    return fxBuildSimpleSheet(type, qs);
+  if (FX_LISTEN_TEXT_TYPES.has(type))  return fxBuildListenTextSheet(type, qs);
+  if (FX_LISTEN_FIXED_TYPES.has(type)) return fxBuildListenFixedSheet(type, qs);
+  return fxBuildJsonSheet(type, qs);
+}
+
+// ── parsers ─────────────────────────────────────────────────────
+function fxParseSimpleSheet(rows: FxRow[], type: string, examId: string, level: string): ComposeQuestion[] {
+  const header = (rows[0] ?? []).map((c) => fxStr(c));
+  const idx = (k: string) => header.indexOf(k);
+  const out: ComposeQuestion[] = [];
+  rows.slice(1).forEach((r, i) => {
+    const question = fxStr(r[idx("question")]);
+    if (!question) return;
+    const data: QData = {
+      question,
+      correct: fxStr(r[idx("correct")]),
+      wrongs: [fxStr(r[idx("wrong1")]), fxStr(r[idx("wrong2")]), fxStr(r[idx("wrong3")])],
+      explanation: fxStr(r[idx("explanation")]),
+      vocab: fxStr(r[idx("vocab")]),
+      grammar: fxStr(r[idx("grammar")]),
+    };
+    out.push({
+      ...data,
+      id: fxStr(r[idx("id")]) || randomUUID(),
+      exam_id: examId,
+      type, level,
+      order_index: Number(r[idx("order_index")] ?? i) || i,
+    } as ComposeQuestion);
+  });
+  return out;
+}
+
+function fxParseListenSheet(rows: FxRow[], type: string, examId: string, level: string, fixedChoice: boolean): ComposeQuestion[] {
+  const header = (rows[0] ?? []).map((c) => fxStr(c));
+  const idx = (k: string) => header.indexOf(k);
+  // Group consecutive rows with the same q_id into one ComposeQuestion.
+  const map = new Map<string, ComposeQuestion>();
+  const order: string[] = [];
+  rows.slice(1).forEach((r, i) => {
+    const qId = fxStr(r[idx("q_id")]) || `${type}-${i}`;
+    if (!map.has(qId)) {
+      order.push(qId);
+      map.set(qId, {
+        id: qId.startsWith(type) ? randomUUID() : qId,
+        exam_id: examId,
+        type, level,
+        order_index: Number(r[idx("order_index")] ?? order.length - 1) || order.length - 1,
+        audio_url: fxStr(r[idx("audio_url")]) || undefined,
+        audio_script: fxStr(r[idx("audio_script_json")]) || undefined,
+        audioUrl: fxStr(r[idx("audio_url")]),
+        audioScript: fxStr(r[idx("audio_script_json")]),
+        audio_translation: fxStr(r[idx("audio_translation")]),
+        questions: [],
+      } as ComposeQuestion);
+    }
+    const q = map.get(qId)!;
+    const sub: Record<string, unknown> = {
+      correct: fxStr(r[idx("correct")]),
+      explanation: fxStr(r[idx("explanation")]),
+      vocab: fxStr(r[idx("vocab")]),
+      grammar: fxStr(r[idx("grammar")]),
+    };
+    if (!fixedChoice) {
+      const w1 = idx("wrong1"), w2 = idx("wrong2"), w3 = idx("wrong3");
+      sub.question = fxStr(r[idx("question")]);
+      sub.imageUrl = fxStr(r[idx("image_url")]);
+      sub.wrongs = [fxStr(r[w1]), fxStr(r[w2]), fxStr(r[w3])].filter((s, _, a) => a.some((x) => x));
+    }
+    (q.questions as Record<string, unknown>[]).push(sub);
+  });
+  return order.map((k) => map.get(k)!).filter(Boolean);
+}
+
+function fxParseJsonSheet(rows: FxRow[], type: string, examId: string, level: string): ComposeQuestion[] {
+  const header = (rows[0] ?? []).map((c) => fxStr(c));
+  const idx = (k: string) => header.indexOf(k);
+  const out: ComposeQuestion[] = [];
+  rows.slice(1).forEach((r, i) => {
+    const json = fxStr(r[idx("data_json")]);
+    if (!json) return;
+    let data: Record<string, unknown> = {};
+    try { data = JSON.parse(json) as Record<string, unknown>; } catch { return; }
+    out.push({
+      ...data,
+      id: fxStr(r[idx("id")]) || randomUUID(),
+      exam_id: examId,
+      type, level,
+      order_index: Number(r[idx("order_index")] ?? i) || i,
+      audio_url: fxStr(r[idx("audio_url")]) || undefined,
+      audio_script: fxStr(r[idx("audio_script_json")]) || undefined,
+    } as ComposeQuestion);
+  });
+  return out;
+}
+
+function fxParseSheet(rows: FxRow[], examId: string, level: string): ComposeQuestion[] {
+  if (rows.length < 2) return [];
+  const header = (rows[0] ?? []).map((c) => fxStr(c));
+  const tIdx = header.indexOf("__type__");
+  if (tIdx < 0) return [];
+  // Type stamped on every data row; first non-empty row wins.
+  let type = "";
+  for (let i = 1; i < rows.length; i++) {
+    const v = fxStr(rows[i]?.[tIdx]);
+    if (v) { type = v; break; }
+  }
+  if (!type) return [];
+  if (FX_SIMPLE_VG_TYPES.has(type))    return fxParseSimpleSheet(rows, type, examId, level);
+  if (FX_LISTEN_TEXT_TYPES.has(type))  return fxParseListenSheet(rows, type, examId, level, false);
+  if (FX_LISTEN_FIXED_TYPES.has(type)) return fxParseListenSheet(rows, type, examId, level, true);
+  return fxParseJsonSheet(rows, type, examId, level);
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────
 export default function ComposeTab({ showToast }: { showToast: (msg: string, type?: string) => void }) {
   const [exam, setExam]                 = useState<ExamMeta|null>(null);
   const [showExamModal, setShowExamModal] = useState(false);
   const [showSave, setShowSave]         = useState(false);
   const [questions, setQuestions]       = useState<ComposeQuestion[]>([]);
+  const [exporting, setExporting]       = useState(false);
+  const [importing, setImporting]       = useState(false);
   const [editingId, setEditingId]       = useState<string|null>(null);
   const [activeId, setActiveId]         = useState("kanji");
   const [formData, setFormData]         = useState<Record<string,QData>>(() =>
@@ -2417,6 +2644,80 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     if (editingId) setEditingId(null);
     setFormData(d => ({ ...d, [id]: mkDefault(id) }));
     setActiveId(id);
+  };
+
+  // ── Export every question to a single .xlsx (one sheet per type)
+  // and import the same back to fully restore an exam.
+  const handleExportFullExcel = async () => {
+    if (!exam || questions.length === 0) return;
+    setExporting(true);
+    try {
+      const XLSX = await loadXLSX();
+      const wb = XLSX.utils.book_new();
+      const grouped = new Map<string, ComposeQuestion[]>();
+      for (const q of questions) {
+        const arr = grouped.get(q.type) ?? [];
+        arr.push(q);
+        grouped.set(q.type, arr);
+      }
+      let sheetCount = 0;
+      for (const [type, qs] of grouped) {
+        const aoa = fxBuildSheet(type, qs);
+        if (aoa.length <= 1) continue;
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        // Sheet names are capped at 31 chars and can't contain / \ ? * [ ]
+        const sheetName = String(type).slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        sheetCount++;
+      }
+      if (sheetCount === 0) { showToast("Không có câu hỏi để export.", "error"); return; }
+      const safeName = String(exam.name || "exam").replace(/[\\/?*[\]:]/g, "_").slice(0, 80);
+      XLSX.writeFile(wb, `${safeName}_${exam.level || ""}_export.xlsx`);
+      showToast(`Đã export ${questions.length} câu sang ${sheetCount} sheet.`, "success");
+    } catch (err) {
+      console.error("[ExportFullExcel]", err);
+      showToast("Lỗi export Excel — xem console để chi tiết.", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFullExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!exam) { showToast("Hãy tạo/chọn bộ đề trước khi import.", "error"); return; }
+    if (questions.length > 0 && !window.confirm(
+      `Import sẽ THAY THẾ toàn bộ ${questions.length} câu hiện tại bằng dữ liệu từ file. Tiếp tục?`,
+    )) return;
+    setImporting(true);
+    try {
+      const XLSX = await loadXLSX();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const next: ComposeQuestion[] = [];
+      for (const sheetName of wb.SheetNames) {
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json<FxRow>(ws, { header: 1, defval: "" });
+        const parsed = fxParseSheet(rows, exam.id, exam.level);
+        next.push(...parsed);
+      }
+      if (next.length === 0) {
+        showToast("Không parse được câu hỏi nào — file đúng định dạng export?", "error");
+        return;
+      }
+      // Re-number order_index in the order sheets appeared so the
+      // imported questions land in the same sequence the export gave.
+      next.forEach((q, i) => { q.order_index = i; });
+      setQuestions(next);
+      setEditingId(null);
+      showToast(`Đã import ${next.length} câu từ ${wb.SheetNames.length} sheet.`, "success");
+    } catch (err) {
+      console.error("[ImportFullExcel]", err);
+      showToast("Lỗi đọc file — dùng file .xlsx đã export từ hệ thống.", "error");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleImportComposeExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2698,6 +2999,31 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               {audioUrl ? "🎧 Audio ✓" : "🎧 Thêm Audio"}
             </button>
           ))}
+          {questions.length>0 && (
+            <button
+              type="button"
+              className="compose-btn compose-btn-export"
+              onClick={handleExportFullExcel}
+              disabled={exporting}
+              title="Export toàn bộ đề ra Excel (round-trip với Import)"
+            >
+              <img src="/svg/download.svg" width={14} height={14} alt="" aria-hidden />
+              {exporting ? "Đang xuất..." : "Export"}
+            </button>
+          )}
+          <label
+            className="compose-btn compose-btn-import"
+            title="Import file .xlsx đã export — THAY THẾ toàn bộ câu hỏi hiện tại"
+          >
+            <img src="/svg/upload.svg" width={14} height={14} alt="" aria-hidden />
+            {importing ? "Đang nhập..." : "Import"}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: "none" }}
+              onChange={handleImportFullExcel}
+            />
+          </label>
           {questions.length>0 && <button type="button" onClick={() => setShowSave(true)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>💾 Lưu bộ đề</button>}
           <button type="button" onClick={() => setShowJSON(s => !s)} style={{ padding: "6px 14px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: showJSON?C.panel:"transparent", color: showJSON?C.text:C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{showJSON?"◀ Form":"{ } JSON"}</button>
         </div>
