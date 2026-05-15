@@ -1214,7 +1214,9 @@ function AudioScriptEditor({
         .map((row) => ({
           start: normalizeImportTimecode(row[0] as string | number),
           end:   normalizeImportTimecode(row[1] as string | number),
-          text:  String(row[2] ?? "").trim(),
+          // Empty content → mark as [SPACE] so admins can use blank C
+          // cells in the spreadsheet to insert layout spacers.
+          text:  String(row[2] ?? "").trim() || "[SPACE]",
         }))
         .filter((line) => line.text);
 
