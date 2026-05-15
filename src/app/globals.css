@@ -1024,6 +1024,14 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .radio-answer-option:has(input:checked) input[type=radio]{accent-color:#fff;}
 .radio-answer-label{font-weight:700;font-size:16px;min-width:14px;text-align:center;line-height:1;font-family:'Noto Sans JP',sans-serif;}
 
+/* listen_togo Loại 2: 4 text inputs stacked, each row prefixed by
+   a radio that marks which option is the correct answer. */
+.radio-text-options{display:flex;flex-direction:column;gap:8px;}
+.radio-text-option-row{display:flex;align-items:center;gap:8px;}
+.radio-text-option-row input[type=radio]{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;margin:0;}
+.radio-option-num{font-weight:700;font-size:14px;min-width:18px;color:var(--muted);font-family:'Noto Sans JP',sans-serif;text-align:center;}
+.radio-text-option-row:has(input:checked) .radio-option-num{color:var(--accent);}
+
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
 .compose-tag-btn.vocab{border-color:#f97316;color:#f97316;background:#fff8f5;}

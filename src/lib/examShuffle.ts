@@ -36,6 +36,26 @@ function fixedChoiceCount(type: string, level: string | null | undefined): 3 | 4
   return 4; // safe default; never reached given current callers
 }
 
+/** listen_togo type2 sub-questions store admin input as `options[4]`
+ *  + `correctIdx`. Adapt to the legacy `correct + wrongs` shape that
+ *  applyShuffle / nChoices already understand. Falls back to the
+ *  legacy fields when `options` is absent so old saves keep working. */
+function readT2Sub(sq: SubQ): { correct: string; wrongs: string[] } {
+  if (Array.isArray(sq.options)) {
+    const options = (sq.options as unknown[]).map((v) => String(v ?? ""));
+    const rawIdx = parseInt(String(sq.correctIdx ?? "0"), 10);
+    const safeIdx = isNaN(rawIdx) || rawIdx < 0 || rawIdx >= options.length ? 0 : rawIdx;
+    return {
+      correct: options[safeIdx] ?? "",
+      wrongs: options.filter((_, i) => i !== safeIdx),
+    };
+  }
+  return {
+    correct: String(sq.correct ?? ""),
+    wrongs: ((sq.wrongs as string[]) ?? []).map(String),
+  };
+}
+
 // ─── SubQ shape (loose) ──────────────────────────────────────────────
 export interface SubQ {
   question?: string;
@@ -126,9 +146,13 @@ export function collectAnswerSlots(q: RawQuestion): AnswerSlotPlan[] {
       (p.questions ?? []).forEach((sq, qIdx) => pushSlot(slots, `${id}-${pIdx}-${qIdx}`, sq));
     });
   } else if (type === "listen_togo") {
-    pushSlot(slots, `${id}-t1`, data.type1 as SubQ | undefined);
+    // t1 is fixed-choice (radio 1/2/3/4) — no balancing needed.
+    // t2 sub-questions read options/correctIdx (or legacy
+    // correct/wrongs) before joining the balanced position map.
     ((data.type2 as { questions?: SubQ[] } | undefined)?.questions ?? []).forEach((sq, i) => {
-      pushSlot(slots, `${id}-t2-${i}`, sq);
+      const { correct, wrongs } = readT2Sub(sq);
+      const n = nChoices(correct, wrongs);
+      if (n > 1) slots.push({ slotKey: `${id}-t2-${i}`, n });
     });
   } else if (type.startsWith("listen_")) {
     ((data.questions as SubQ[]) ?? []).forEach((sq, i) => pushSlot(slots, `${id}-${i}`, sq));
@@ -295,16 +319,30 @@ export function sanitizeQuestion(
     });
 
   } else if (type === "listen_togo") {
+    // t1 = single sub with fixed `["1","2","3","4"]` choices (admin
+    // picked the correct number directly). Same shape as bjt_1_3 /
+    // listen_gaiyou — no shuffle, no posMap entry.
     const t1 = data.type1 as SubQ | undefined;
     if (t1) {
       const key = `${id}-t1`;
-      applyShuffle(t1, userId, examId, key, posMap);
+      t1.choices = ["1", "2", "3", "4"];
+      delete t1.correct;
+      delete t1.wrongs;
       slotKeys.push(key);
     }
+    // t2 sub-questions store text per-option as `options[]` +
+    // `correctIdx`. Convert to the legacy correct/wrongs shape so
+    // applyShuffle can run as before — the shuffle still randomises
+    // option order between learners.
     const t2 = data.type2 as { mainQuestion?: string; questions?: SubQ[] } | undefined;
     if (t2?.questions) {
       t2.questions.forEach((sq, i) => {
         const key = `${id}-t2-${i}`;
+        const { correct, wrongs } = readT2Sub(sq);
+        sq.correct = correct;
+        sq.wrongs = wrongs;
+        delete sq.options;
+        delete sq.correctIdx;
         applyShuffle(sq, userId, examId, key, posMap);
         slotKeys.push(key);
       });
@@ -408,10 +446,11 @@ export function expectedPosForSlot(
   // listen_togo: ${id}-t1 or ${id}-t2-${i}
   if (type === "listen_togo") {
     if (slotKey === `${id}-t1`) {
+      // Fixed-choice radio — same shape as bjt_1_3 / listen_gaiyou.
       const t1 = data.type1 as SubQ | undefined;
       if (!t1) return null;
-      const n = nChoices(t1.correct, t1.wrongs);
-      return posMap?.[slotKey] ?? deterministicPos(userId, examId, slotKey, n);
+      const cn = parseInt(String(t1.correct ?? ""), 10);
+      return isNaN(cn) || cn < 1 ? 0 : cn - 1;
     }
     const m = slotKey.match(new RegExp(`^${escRe(id)}-t2-(\\d+)$`));
     if (m) {
@@ -419,7 +458,8 @@ export function expectedPosForSlot(
       const t2 = data.type2 as { questions?: SubQ[] } | undefined;
       const sq = t2?.questions?.[i];
       if (!sq) return null;
-      const n = nChoices(sq.correct, sq.wrongs);
+      const { correct, wrongs } = readT2Sub(sq);
+      const n = nChoices(correct, wrongs);
       return posMap?.[slotKey] ?? deterministicPos(userId, examId, slotKey, n);
     }
     return null;

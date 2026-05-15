@@ -17,7 +17,7 @@ import {
   C, iBase, taBase,
   getComposeTypeGroups, getFixedHeaderText, isN1OrN2Level, isN4OrN5Level, isN3Level,
   TYPE_MAP, GROUP_MAP, ALL_TYPES,
-  mkDefault, mkSQ, mkLQ, mkLQS, mkLTQ, mkLFixed, normalizeBjtSogoChokaiQuestion,
+  mkDefault, mkSQ, mkLQ, mkLQS, mkLTQ, mkLTQ2, mkLFixed, normalizeBjtSogoChokaiQuestion,
   BJT_FORM_FIXED_JP,
   type TypeDef, type TypeGroup, type QData, type ComposeQuestion,
 } from "@/app/ad/compose/composeConstants";
@@ -1558,12 +1558,16 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
 function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
   data: QData; onChange: (d: QData) => void; examAudio: string; typeId: string; level: string;
 }) {
-  const t1 = (data.type1 as QData) || { mainQuestion:"", orderNum:"", correct:"", wrongs:["","",""], explanation:"", vocab:"", grammar:"" };
-  const t2 = (data.type2 as {mainQuestion:string;questions:QData[]}) || { mainQuestion:"", questions:[mkLTQ(),mkLTQ()] };
+  // Loại 1 (type1): no choice text on the test paper — admin only
+  // picks the correct number 1から4.
+  // Loại 2 (type2): each sub-question has 4 typed options + a radio
+  // marking which one is correct.
+  const t1 = (data.type1 as QData) || { mainQuestion:"", orderNum:"", correct:"", explanation:"", vocab:"", grammar:"" };
+  const t2 = (data.type2 as {mainQuestion:string;questions:QData[]}) || { mainQuestion:"", questions:[mkLTQ2(), mkLTQ2()] };
   const ut1 = (k: string, v: unknown) => onChange({ ...data, type1: { ...t1, [k]: v } });
   const ut2 = (k: string, v: unknown) => onChange({ ...data, type2: { ...t2, [k]: v } });
   const uT2Q = (i: number, k: string, v: unknown) => {
-    const qs = [...(t2.questions||[mkLTQ(),mkLTQ()])];
+    const qs = [...(t2.questions || [mkLTQ2(), mkLTQ2()])];
     qs[i] = { ...qs[i], [k]: v };
     onChange({ ...data, type2: { ...t2, questions: qs } });
   };
@@ -1577,28 +1581,73 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
       />
       <AudioScriptField data={data} onChange={onChange} />
       <AudioTranslationField data={data} onChange={onChange} />
+
+      {/* ── Loại 1 — radio thuần 1/2/3/4 ── */}
       <div style={{ border: `1.5px solid ${C.purple}44`, borderRadius: 12, padding: 18, marginBottom: 16, background: C.purple+"05" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (3 đáp án sai)</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.purple, marginBottom: 14 }}>Loại 1 — 1 câu (radio 1/2/3/4)</div>
         {isN1OrN2Level(level) && (
           <Fl label="Câu hỏi lớn"><Ta value={String(t1.mainQuestion||"")} onChange={v => ut1("mainQuestion",v)} placeholder="どちらがよいと思いますか。" rows={2} /></Fl>
         )}
         <Fl label="Số thứ tự trong đề"><Inp value={String(t1.orderNum||"")} onChange={v => ut1("orderNum",v)} placeholder="例：1" style={{ width: 120 }} noBracketBtn /></Fl>
-        <Fl label="Đáp án đúng"><Inp value={String(t1.correct||"")} onChange={v => ut1("correct",v)} placeholder="正解" /></Fl>
-        <WrongAnswers values={(t1.wrongs as string[])||["","",""]} onChange={v => ut1("wrongs",v)} count={3} />
+        <Fl label="Đáp án đúng" hint="Chọn 1 trong 4 lựa chọn (1から4). Đề thi không in đáp án — học viên chỉ nghe và chọn số.">
+          <FixedChoiceRadio
+            value={String(t1.correct||"")}
+            count={4}
+            name={`togo-t1-${String(data.id||"")}`}
+            onChange={v => ut1("correct", v)}
+          />
+        </Fl>
         <ExplainFields data={t1} onChange={(k,v) => ut1(k,v)} />
       </div>
+
+      {/* ── Loại 2 — 4 ô options/câu, radio đánh dấu đáp án đúng ── */}
       <div style={{ border: `1.5px solid ${C.blue}44`, borderRadius: 12, padding: 18, background: C.blue+"05" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.blue, marginBottom: 14 }}>Loại 2 — 2 câu (có câu hỏi lớn)</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.blue, marginBottom: 14 }}>Loại 2 — N câu (mỗi câu 4 lựa chọn text + radio đáp án)</div>
         <Fl label="Câu hỏi lớn"><Ta value={String(t2.mainQuestion||"")} onChange={v => ut2("mainQuestion",v)} placeholder="どちらがよいと思いますか。" rows={2} /></Fl>
-        {(t2.questions||[mkLTQ(),mkLTQ()]).map((q,i) => (
-          <div key={i} style={{ border: `1px solid ${C.border2}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 10 }}>Câu {i+1}</div>
-            <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uT2Q(i,"orderNum",v)} placeholder="例：2" style={{ width: 120 }} noBracketBtn /></Fl>
-            <Fl label="Đáp án đúng"><Inp value={String(q.correct||"")} onChange={v => uT2Q(i,"correct",v)} placeholder="正解" /></Fl>
-            <WrongAnswers values={(q.wrongs as string[])||["","",""]} onChange={v => uT2Q(i,"wrongs",v)} count={3} />
-            <ExplainFields data={q} onChange={(k,v) => uT2Q(i,k,v)} />
-          </div>
-        ))}
+        {(t2.questions || [mkLTQ2(), mkLTQ2()]).map((q, i) => {
+          // Back-compat: legacy data has correct/wrongs instead of
+          // options/correctIdx. Lazily migrate when we render — first
+          // option = correct, rest = wrongs in their stored order.
+          const rawOptions = Array.isArray(q.options)
+            ? (q.options as string[]).map((s) => String(s ?? ""))
+            : [String(q.correct ?? ""), ...(((q.wrongs as string[]) ?? []).map(String))];
+          const options = [0,1,2,3].map((idx) => rawOptions[idx] ?? "");
+          const correctIdx = (() => {
+            const n = parseInt(String(q.correctIdx ?? "0"), 10);
+            return isNaN(n) || n < 0 || n > 3 ? 0 : n;
+          })();
+          return (
+            <div key={i} style={{ border: `1px solid ${C.border2}`, borderRadius: 8, padding: 14, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 10 }}>Câu {i+1}</div>
+              <Fl label="Số thứ tự trong đề"><Inp value={String(q.orderNum||"")} onChange={v => uT2Q(i,"orderNum",v)} placeholder="例：2" style={{ width: 120 }} noBracketBtn /></Fl>
+              <Fl label="Các lựa chọn (radio = đáp án đúng)" hint="Học viên thấy 4 ô text này theo thứ tự xáo trộn. Tích radio vào câu đúng.">
+                <div className="radio-text-options">
+                  {[0,1,2,3].map((optIdx) => (
+                    <div key={optIdx} className="radio-text-option-row">
+                      <input
+                        type="radio"
+                        name={`togo-t2-${i}-${String(data.id||"")}`}
+                        checked={correctIdx === optIdx}
+                        onChange={() => uT2Q(i, "correctIdx", optIdx)}
+                      />
+                      <span className="radio-option-num">{optIdx + 1}</span>
+                      <Inp
+                        value={options[optIdx]}
+                        onChange={(v) => {
+                          const next = [...options];
+                          next[optIdx] = v;
+                          uT2Q(i, "options", next);
+                        }}
+                        placeholder={`Lựa chọn ${optIdx + 1}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Fl>
+              <ExplainFields data={q} onChange={(k,v) => uT2Q(i,k,v)} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

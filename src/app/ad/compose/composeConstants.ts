@@ -277,6 +277,11 @@ export const mkLTQ   = (): QData => ({ orderNum: "", correct: "", wrongs: ["",""
 // Fixed-choice listen mondai (概要理解 / 即時応答) — admin picks
 // the correct number via radio so we only ever store `correct`.
 export const mkLFixed = (): QData => ({ orderNum: "", correct: "" });
+// listen_togo type2 sub-questions: admin types each option text +
+// uses a radio to mark which one is correct. Storage groups them
+// as `options[]` + `correctIdx`; pipeline maps that to legacy
+// correct/wrongs at sanitize time so applyShuffle can run.
+export const mkLTQ2  = (): QData => ({ orderNum: "", options: ["","","",""], correctIdx: 0 });
 
 export function mkDefault(id: string): QData {
   if (["kanji","bunmyaku","iikae","hyouki","yoho","bunpo1","bunpo2"].includes(id)) return mkBase();
@@ -291,7 +296,13 @@ export function mkDefault(id: string): QData {
   if (id === "listen_gaiyou" || id === "listen_sokuji")
     return { audioUrl: "", questions: [mkLFixed()] };
   if (id === "listen_togo")
-    return { audioUrl: "", type1: { mainQuestion: "", orderNum: "", correct: "", wrongs: ["","",""], explanation: "", vocab: "", grammar: "" }, type2: { mainQuestion: "", questions: [mkLTQ(), mkLTQ()] } };
+    return {
+      audioUrl: "",
+      // type1 = fixed-choice radio (1/2/3/4), no wrongs.
+      type1: { mainQuestion: "", orderNum: "", correct: "", explanation: "", vocab: "", grammar: "" },
+      // type2 = N sub-questions, each with options[] + correctIdx.
+      type2: { mainQuestion: "", questions: [mkLTQ2(), mkLTQ2()] },
+    };
   if (id === "bjt_1_1" || id === "bjt_1_2")
     return { imageUrl: "", correct: "", wrongs: ["","",""], explanation: "", vocab: "", grammar: "" };
   if (id === "bjt_1_3")
