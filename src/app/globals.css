@@ -736,9 +736,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 }
 
 /* ── Break screen ── */
-.break-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px;text-align:center;padding:40px;}
+.break-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:28px;text-align:center;padding:80px 40px 40px;}
 .break-overlay.hidden{display:none;}
-.break-emoji{font-size:72px;animation:bpulse 2s ease-in-out infinite;}
+/* line-height:1 + flex-centring kill the phantom inline-baseline gap
+   the old 72px font-size left around the <img>, so the icon sits
+   evenly inside its wrapper and lines up with the centred column. */
+.break-emoji{display:flex;align-items:center;justify-content:center;line-height:1;animation:bpulse 2s ease-in-out infinite;}
 @keyframes bpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
 .break-title{font-size:36px;font-weight:800;letter-spacing:-1px;}
 .break-sub{font-size:15px;color:var(--muted);max-width:420px;line-height:1.8;}
