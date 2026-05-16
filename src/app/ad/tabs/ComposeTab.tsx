@@ -2554,6 +2554,15 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   const [activeId, setActiveId]         = useState("kanji");
   const [formData, setFormData]         = useState<Record<string,QData>>(() =>
     Object.fromEntries(ALL_TYPES.map(t => [t.id, mkDefault(t.id)])));
+  // Snapshot of the form the admin saw when they last entered an
+  // edit context (new question, switching tabs, clicking ✎ on an
+  // existing question, etc.). Compare against the current form to
+  // tell whether there are unsaved changes. Initialised to the
+  // default kanji form so the first render isn't reported dirty.
+  const originalFormRef = useRef<string>(JSON.stringify(mkDefault("kanji")));
+  const takeSnapshot = (data: QData) => {
+    originalFormRef.current = JSON.stringify(data);
+  };
   const [pulse, setPulse]               = useState(false);
   const [showJSON, setShowJSON]         = useState(false);
   const [groupingOpen, setGroupingOpen] = useState(false);
@@ -2634,6 +2643,19 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam?.level]);
 
+  // Browser-level unsaved-changes guard. No dep array on purpose —
+  // re-registering each render means the closure always reads the
+  // freshest isDirty() result (originalFormRef + formData).
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  });
+
   const grpColor = GROUP_MAP[activeId]?.color || C.accent;
   const exportAudioUrl = exam?.level==="BJT"
     ? JSON.stringify({ bjt_part1: bjtAudio.part1||"", bjt_part2: bjtAudio.part2||"" })
@@ -2642,6 +2664,15 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   const setData  = (v: QData) => setFormData(d => ({ ...d, [activeId]: v }));
   const resetForm = () => setFormData(d => ({ ...d, [activeId]: mkDefault(activeId) }));
 
+  // Unsaved-changes guard: every render reads originalFormRef +
+  // formData[activeId] fresh, so the result is always current.
+  const isDirty = () =>
+    JSON.stringify(formData[activeId] ?? mkDefault(activeId)) !== originalFormRef.current;
+  const confirmDiscard = (): boolean => {
+    if (!isDirty()) return true;
+    return window.confirm("Có thay đổi chưa lưu. Bỏ thay đổi và tiếp tục?");
+  };
+
   const handleSaveQ = () => {
     if (!exam) { setShowExamModal(true); return; }
     const q: ComposeQuestion = { ...data, id: editingId||randomUUID(), type: activeId, level: exam.level };
@@ -2649,14 +2680,20 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     if (editingId) setQuestions(qs => qs.map(x => x.id===editingId?q:x));
     else setQuestions(qs => [...qs, q]);
     setEditingId(null); resetForm();
+    // Form is back to its mkDefault baseline → new snapshot matches
+    // so the dirty check resets to clean immediately.
+    takeSnapshot(mkDefault(activeId));
     setPulse(true); setTimeout(() => setPulse(false), 600);
   };
   const handleEdit = (q: ComposeQuestion) => {
+    if (!confirmDiscard()) return;
     const row = { ...q };
     if (q.type==="bjt_1_3"||q.type==="bjt_2_3") normalizeBjtSogoChokaiQuestion(row);
     setActiveId(q.type);
     setFormData(d => ({ ...d, [q.type]: row }));
     setEditingId(q.id);
+    // Snapshot the row we just loaded so untouched edits stay clean.
+    takeSnapshot(row);
   };
   const handleDelete = (id: string) => {
     setQuestions(qs => qs.filter(q => q.id!==id));
@@ -2664,13 +2701,20 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     // for IDs that were never written to the DB (client-only new
     // questions) — the server's delete query just no-ops on those.
     if (id) setDeletedQuestionIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    if (editingId===id) { setEditingId(null); resetForm(); }
+    if (editingId===id) {
+      setEditingId(null);
+      resetForm();
+      takeSnapshot(mkDefault(activeId));
+    }
   };
   const handleReorder = (newQs: ComposeQuestion[]) => setQuestions(newQs);
   const switchType = (id: string) => {
+    if (!confirmDiscard()) return;
     if (editingId) setEditingId(null);
     setFormData(d => ({ ...d, [id]: mkDefault(id) }));
     setActiveId(id);
+    // New tab → fresh mkDefault baseline.
+    takeSnapshot(mkDefault(id));
   };
 
   // Sweeps every 〖vocab〗 / 〔grammar〕 surface out of every question
@@ -3016,6 +3060,9 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
       // Fresh DB snapshot — any pending deletes from a previous
       // editing session no longer apply.
       setDeletedQuestionIds([]);
+      // Active form was just reset to mkDefault — re-baseline so the
+      // unsaved-changes warning doesn't fire spuriously.
+      takeSnapshot(mkDefault(activeId));
       showToast(`Đã load đề "${examData.name}" — chỉnh sửa rồi nhấn Lưu bộ đề`, "default");
     } finally { setLoadingExam(false); }
   }, [showToast]);
@@ -3101,6 +3148,7 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
             setBjtAudio({ part1:"", part2:"" }); setBjtAudioDraft({ part1:"", part2:"" });
             setShowAudioInput(false);
             setFormData(Object.fromEntries(ALL_TYPES.map(t => [t.id, mkDefault(t.id)])));
+            takeSnapshot(mkDefault(activeId));
           }}} style={{ background: "none", border: `1px solid ${C.border2}`, color: C.muted, cursor: "pointer", fontSize: 11, padding: "2px 9px", borderRadius: 6, flexShrink: 0 }}>+ Mới</button>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -3192,7 +3240,12 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               <input ref={excelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleImportComposeExcel} />
               <button type="button" onClick={() => excelRef.current?.click()} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${grpColor}66`, background: grpColor+"18", color: grpColor, fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Import Excel cho mondai hiện tại">📥 Import Excel</button>
               <button type="button" onClick={handleDownloadComposeTemplate} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Tải template Excel cho mondai hiện tại">⬇ Template Excel</button>
-              {editingId && <button type="button" onClick={() => { setEditingId(null); resetForm(); }} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Hủy</button>}
+              {editingId && <button type="button" onClick={() => {
+                if (!confirmDiscard()) return;
+                setEditingId(null);
+                resetForm();
+                takeSnapshot(mkDefault(activeId));
+              }} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Hủy</button>}
               <button type="button" onClick={handleSaveQ} style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: pulse?C.green:grpColor, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", transition: "background 0.25s", whiteSpace: "nowrap" }}>
                 {editingId?"✓ Cập nhật":"＋ Lưu câu"}
               </button>
