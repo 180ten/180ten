@@ -1177,21 +1177,20 @@ function ListenAudioAndScript({
   const [scriptMode, setScriptMode] = useState<"seek" | "vocab">("seek");
   const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
 
-  // Render-time decision based on props only — examAudioRef.current
-  // might be null on the first commit, so handlers re-check at call
-  // time. Per spec, we prefer the shared exam audio whenever the
-  // admin tagged an audioStart for this question.
-  const useExamAudio = !!(audioStart && examAudioRef);
-  const offsetSecs   = audioStart ? parseTimecode(audioStart) : 0;
+  // Audio source decision: if the exam-level <audio> is mounted we
+  // always seek it — audio_script timestamps are authored as
+  // absolute offsets into that clip, so no per-question audioStart
+  // is required for click-to-seek / highlight to line up.
+  const useExamAudio = !!examAudioRef?.current;
+  const offsetSecs   = 0;
   const endOffsetSecs = audioEnd ? parseTimecode(audioEnd) : null;
 
   // Look up the right audio element at call time so a not-yet-
   // populated examAudioRef on first render doesn't trap us in the
   // wrong mode.
   const getActiveAudio = useCallback((): HTMLAudioElement | null => {
-    if (useExamAudio) return examAudioRef?.current ?? null;
-    return audioRef.current;
-  }, [useExamAudio, examAudioRef]);
+    return examAudioRef?.current ?? audioRef.current;
+  }, [examAudioRef]);
 
   function handleLineClick(idx: number, start: string) {
     const a = getActiveAudio();
@@ -1213,7 +1212,7 @@ function ListenAudioAndScript({
     // crossing event (user scrubbing far past won't trigger).
     let lastTime = audio.currentTime;
     const onTimeUpdate = () => {
-      const cur = audio.currentTime - offsetSecs;
+      const cur = audio.currentTime;
       let nextIdx: number | null = null;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -1236,7 +1235,7 @@ function ListenAudioAndScript({
     };
     audio.addEventListener("timeupdate", onTimeUpdate);
     return () => audio.removeEventListener("timeupdate", onTimeUpdate);
-  }, [lines, useExamAudio, offsetSecs, endOffsetSecs, getActiveAudio]);
+  }, [lines, useExamAudio, endOffsetSecs, getActiveAudio]);
 
   // Scroll the active sentence into view. `block:"nearest"` is a
   // no-op when the element is already visible, so this only nudges
@@ -1252,18 +1251,11 @@ function ListenAudioAndScript({
   if (!audioSrc && lines.length === 0 && !hasTranslation && !audioStart) return null;
   return (
     <div className="per-question-audio-wrap">
-      {/* Per-q audio bar is hidden in exam-audio mode — the shared
-          <audio> at the top of the listening section + the ▶ button
-          on the question card cover playback. */}
-      {audioSrc && !useExamAudio && (
-        <audio
-          ref={audioRef}
-          controls
-          src={encodeAudioUrl(audioSrc)}
-          className="per-question-audio-bar"
-          preload="metadata"
-        />
-      )}
+      {/* Per-question <audio> bar removed — the exam-level <audio>
+          at the top of the listening section is the only player now.
+          audioRef is kept on the useRef above as a no-op fallback so
+          getActiveAudio() can return null cleanly when no exam audio
+          is mounted. */}
       {(lines.length > 0 || hasTranslation) && (
         <div className="audio-script-box">
           <div className="audio-script-header" onClick={() => setOpen((v) => !v)}>
