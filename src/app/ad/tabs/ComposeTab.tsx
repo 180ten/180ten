@@ -1295,6 +1295,13 @@ function AudioScriptEditor({
   const addLine      = () => onChange([...lines, { start: "", end: "", text: "" }]);
   const addSpaceLine = () => onChange([...lines, { start: "", end: "", text: "[SPACE]" }]);
   const removeLine   = (idx: number) => onChange(lines.filter((_, i) => i !== idx));
+  const moveLine = (idx: number, dir: -1 | 1) => {
+    const next = idx + dir;
+    if (next < 0 || next >= lines.length) return;
+    const arr = [...lines];
+    [arr[idx], arr[next]] = [arr[next], arr[idx]];
+    onChange(arr);
+  };
 
   // Bulk import rows from .xlsx / .xls / .csv. Columns expected:
   //   A = Start, B = End, C = Nội dung
@@ -1458,12 +1465,28 @@ function AudioScriptEditor({
                 placeholder="Nội dung câu..."
               />
             )}
-            <button
-              type="button"
-              className="ase-btn-remove"
-              title="Xoá dòng"
-              onClick={() => removeLine(idx)}
-            >×</button>
+            <div className="ase-row-actions">
+              <button
+                type="button"
+                className="ase-btn-move"
+                title="Lên 1 dòng"
+                disabled={idx === 0}
+                onClick={() => moveLine(idx, -1)}
+              >↑</button>
+              <button
+                type="button"
+                className="ase-btn-move"
+                title="Xuống 1 dòng"
+                disabled={idx === lines.length - 1}
+                onClick={() => moveLine(idx, 1)}
+              >↓</button>
+              <button
+                type="button"
+                className="ase-btn-remove"
+                title="Xoá dòng"
+                onClick={() => removeLine(idx)}
+              >×</button>
+            </div>
           </div>
         );
       })}

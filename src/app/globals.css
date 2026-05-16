@@ -996,8 +996,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-toolbar-btn-upload{border-color:#1f4d2e;color:#5fc97a;}
 .ase-toolbar-btn-upload:hover{background:#1a2f1f;border-color:#2f6d3e;}
 .ase-toolbar-btn-upload img{filter:none;opacity:1;}
-.ase-header{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:8px 10px;background:#1a1a1a;font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em;}
-.ase-row{display:grid;grid-template-columns:80px 80px 1fr 32px;gap:6px;padding:6px 10px;border-top:1px solid #2a2a2a;align-items:center;}
+.ase-header{display:grid;grid-template-columns:80px 80px 1fr auto;gap:6px;padding:8px 10px;background:#1a1a1a;font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em;}
+.ase-row{display:grid;grid-template-columns:80px 80px 1fr auto;gap:6px;padding:6px 10px;border-top:1px solid #2a2a2a;align-items:center;}
+.ase-row-actions{display:inline-flex;gap:4px;align-items:center;}
 .ase-row-space{background:#15152a;}
 .ase-row-space .ase-input-time{opacity:.5;}
 .ase-space-label{font-size:12px;color:#9ea1ff;font-style:italic;display:flex;align-items:center;padding:0 8px;letter-spacing:.04em;}
@@ -1007,6 +1008,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .ase-input-text:focus{border-color:#6C6FF7;}
 .ase-btn-remove{width:28px;height:28px;border:none;background:#3a1818;color:#E05555;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;line-height:1;}
 .ase-btn-remove:hover{background:#5a2020;}
+/* Reorder arrows — match .ase-btn-remove sizing but neutral grey so
+   they don't read as destructive. Disabled when the row is already
+   at the top / bottom. */
+.ase-btn-move{width:28px;height:28px;border:none;background:#2a2a2a;color:#cfcfd6;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;line-height:1;transition:background .15s;}
+.ase-btn-move:hover:not(:disabled){background:#3a3a4a;color:#fff;}
+.ase-btn-move:disabled{opacity:.3;cursor:not-allowed;}
 .ase-btn-add{width:100%;padding:8px;border:none;background:#1a1a2e;color:#9ea1ff;font-size:13px;font-weight:600;cursor:pointer;border-top:1px solid #2a2a2a;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;}
 .ase-btn-add:hover{background:#252540;}
 /* Live preview rendered with sanitizedRenderRichInline so admins
