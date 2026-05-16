@@ -1211,6 +1211,12 @@ function AudioPreview({ audioUrl }: { audioUrl: string }) {
 // Per-listen-question audio override. Top-level column, not nested in
 // data — so the upsert flow has to extract it before writing `data`
 // (handled in handleSave below).
+//
+// NOTE: hidden from new compose flows since exam-level audio + per-q
+// audioStart/audioEnd timestamps replaced it. Existing rows still
+// upsert their audio_url through `data.audioUrl` → top-level mirror,
+// so legacy data keeps playing back. Component kept for reference /
+// future re-enable.
 function AudioUrlField({
   value, onChange,
 }: { value: string; onChange: (v: string) => void }) {
@@ -1225,6 +1231,38 @@ function AudioUrlField({
         placeholder="https://... (chỉ áp dụng khi review)"
         noBracketBtn
       />
+    </Fl>
+  );
+}
+
+// Per-question offset INSIDE the exam-level audio. Two MM:SS / HH:MM:SS
+// inputs (start + end) — review uses these to seek the shared exam
+// audio to this question's segment instead of loading a per-q clip.
+// Stored as plain strings in data.audioStart / data.audioEnd; no
+// migration required since they live in the JSONB body.
+function AudioOffsetField({
+  start, end, onStartChange, onEndChange,
+}: {
+  start: string;
+  end: string;
+  onStartChange: (v: string) => void;
+  onEndChange:   (v: string) => void;
+}) {
+  return (
+    <Fl
+      label="⏱ Vị trí trong audio đề (review)"
+      hint="MM:SS hoặc HH:MM:SS — offset start/end của câu này trong file audio chung của đề. Để trống nếu không dùng exam audio."
+    >
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Bắt đầu</div>
+          <Inp value={start} onChange={onStartChange} placeholder="03:00" noBracketBtn />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Kết thúc</div>
+          <Inp value={end} onChange={onEndChange} placeholder="03:45" noBracketBtn />
+        </div>
+      </div>
     </Fl>
   );
 }
@@ -1583,9 +1621,9 @@ function ListenKadaiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
-      <AudioUrlField
-        value={String(data.audioUrl ?? "")}
-        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      <AudioOffsetField
+        start={String(data.audioStart ?? "")} end={String(data.audioEnd ?? "")}
+        onStartChange={(v) => onChange({ ...data, audioStart: v })} onEndChange={(v) => onChange({ ...data, audioEnd: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
       <AudioTranslationField data={data} onChange={onChange} />
@@ -1640,9 +1678,9 @@ function ListenSokujiForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
-      <AudioUrlField
-        value={String(data.audioUrl ?? "")}
-        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      <AudioOffsetField
+        start={String(data.audioStart ?? "")} end={String(data.audioEnd ?? "")}
+        onStartChange={(v) => onChange({ ...data, audioStart: v })} onEndChange={(v) => onChange({ ...data, audioEnd: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
       <AudioTranslationField data={data} onChange={onChange} />
@@ -1691,9 +1729,9 @@ function ListenTogoForm({ data, onChange, examAudio, typeId, level }: {
     <div>
       <FixedHeader text={getFixedHeaderText(typeId, data as Record<string,string>, level)} />
       <AudioPreview audioUrl={examAudio} />
-      <AudioUrlField
-        value={String(data.audioUrl ?? "")}
-        onChange={(v) => onChange({ ...data, audioUrl: v })}
+      <AudioOffsetField
+        start={String(data.audioStart ?? "")} end={String(data.audioEnd ?? "")}
+        onStartChange={(v) => onChange({ ...data, audioStart: v })} onEndChange={(v) => onChange({ ...data, audioEnd: v })}
       />
       <AudioScriptField data={data} onChange={onChange} />
       <AudioTranslationField data={data} onChange={onChange} />

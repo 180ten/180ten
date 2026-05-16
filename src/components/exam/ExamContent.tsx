@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, memo, useMemo, useState, useEffect, useRef } from "react";
+import { Fragment, memo, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
@@ -1143,10 +1143,22 @@ function ReadingContent({
 // THAT question's clip, not some sibling player.
 function ListenAudioAndScript({
   audioSrc, lines, audioTranslation,
+  examAudioRef, audioStart, audioEnd,
 }: {
   audioSrc: string | null;
   lines: AudioScriptLine[];
   audioTranslation: string | null;
+  /** Shared exam-level <audio> ref. When `audioStart` is set, this
+   *  component seeks the exam audio at parseTimecode(audioStart)
+   *  instead of mounting its own per-q clip. */
+  examAudioRef?: React.RefObject<HTMLAudioElement | null>;
+  /** Offset (MM:SS) of this question's segment inside the exam audio.
+   *  When provided + examAudioRef is present, exam audio mode wins
+   *  over per-q audio. */
+  audioStart?: string | null;
+  /** Optional end offset (MM:SS). Crossing this boundary pauses the
+   *  shared audio so playback stops at the end of this question. */
+  audioEnd?: string | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scriptContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1162,23 +1174,43 @@ function ListenAudioAndScript({
   const [scriptMode, setScriptMode] = useState<"seek" | "vocab">("seek");
   const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
 
+  // Render-time decision based on props only — examAudioRef.current
+  // might be null on the first commit, so handlers re-check at call
+  // time. Per spec, we prefer the shared exam audio whenever the
+  // admin tagged an audioStart for this question.
+  const useExamAudio = !!(audioStart && examAudioRef);
+  const offsetSecs   = audioStart ? parseTimecode(audioStart) : 0;
+  const endOffsetSecs = audioEnd ? parseTimecode(audioEnd) : null;
+
+  // Look up the right audio element at call time so a not-yet-
+  // populated examAudioRef on first render doesn't trap us in the
+  // wrong mode.
+  const getActiveAudio = useCallback((): HTMLAudioElement | null => {
+    if (useExamAudio) return examAudioRef?.current ?? null;
+    return audioRef.current;
+  }, [useExamAudio, examAudioRef]);
+
   function handleLineClick(idx: number, start: string) {
-    const a = audioRef.current;
+    const a = getActiveAudio();
     if (!a) return;
-    a.currentTime = parseTimecode(start);
+    a.currentTime = parseTimecode(start) + offsetSecs;
     void a.play().catch(() => { /* user gesture rules — ignore */ });
     setActiveLine(idx);
   }
 
-  // Auto-highlight whichever line the audio is currently inside.
+  // Auto-highlight whichever line the audio is currently inside, and
+  // (in exam-audio mode) pause when the question's segment ends.
   // [SPACE] rows have no `start`, so they're skipped — the previous
   // active line stays highlighted across the gap. timeupdate fires
   // ~4 Hz on most browsers; cheap enough to scan the lines linearly.
   useEffect(() => {
-    const audio = audioRef.current;
+    const audio = getActiveAudio();
     if (!audio || lines.length === 0) return;
+    // Track previous time so the audioEnd pause only fires on the
+    // crossing event (user scrubbing far past won't trigger).
+    let lastTime = audio.currentTime;
     const onTimeUpdate = () => {
-      const cur = audio.currentTime;
+      const cur = audio.currentTime - offsetSecs;
       let nextIdx: number | null = null;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -1191,10 +1223,17 @@ function ListenAudioAndScript({
       // primitive state, but skipping the call also avoids the
       // closure allocation for the auto-scroll effect downstream.
       setActiveLine((prev) => (prev === nextIdx ? prev : nextIdx));
+      if (useExamAudio && endOffsetSecs !== null) {
+        const prev = lastTime;
+        if (prev < endOffsetSecs && audio.currentTime >= endOffsetSecs) {
+          audio.pause();
+        }
+      }
+      lastTime = audio.currentTime;
     };
     audio.addEventListener("timeupdate", onTimeUpdate);
     return () => audio.removeEventListener("timeupdate", onTimeUpdate);
-  }, [lines]);
+  }, [lines, useExamAudio, offsetSecs, endOffsetSecs, getActiveAudio]);
 
   // Scroll the active sentence into view. `block:"nearest"` is a
   // no-op when the element is already visible, so this only nudges
@@ -1207,10 +1246,13 @@ function ListenAudioAndScript({
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeLine]);
 
-  if (!audioSrc && lines.length === 0 && !hasTranslation) return null;
+  if (!audioSrc && lines.length === 0 && !hasTranslation && !audioStart) return null;
   return (
     <div className="per-question-audio-wrap">
-      {audioSrc && (
+      {/* Per-q audio bar is hidden in exam-audio mode — the shared
+          <audio> at the top of the listening section + the ▶ button
+          on the question card cover playback. */}
+      {audioSrc && !useExamAudio && (
         <audio
           ref={audioRef}
           controls
@@ -1338,6 +1380,14 @@ function ListenAudioAndScript({
 function ListeningContent({
   questions, answers, answerKey, keyTypeMap, submitted, onPick, audioUrl, level, onAddToAnki,
 }: Pick<ExamContentProps, "questions" | "answers" | "answerKey" | "keyTypeMap" | "submitted" | "onPick" | "audioUrl" | "onAddToAnki"> & { level?: string }) {
+  // Shared ref to the exam-level <audio>. Each ListenAudioAndScript
+  // reads its question's audioStart/audioEnd offsets and seeks this
+  // element instead of mounting its own per-q clip. The play button
+  // on each question card also targets it. Stays in scope for the
+  // entire render so children can read .current at click/tick time
+  // (the actual DOM node is populated only after commit).
+  const examAudioRef = useRef<HTMLAudioElement | null>(null);
+
   if (!questions.length) {
     return <div style={{ padding: 40, textAlign: "center", color: "var(--muted2)" }}>Không có câu nghe hiểu.</div>;
   }
@@ -1357,6 +1407,7 @@ function ListeningContent({
         onClick={(e) => console.log("[listen] audio-bar div clicked", { target: (e.target as HTMLElement).tagName })}
       >
         <audio
+          ref={examAudioRef}
           key={safeSrc}
           controls
           src={safeSrc}
@@ -1412,6 +1463,10 @@ function ListeningContent({
     // priority is: top-level `audio_url` column, then legacy
     // data.audioUrl, then fall back to nothing (the section-wide
     // audio bar at the top still plays the exam-level clip).
+    const audioStart = typeof (q as { audioStart?: unknown }).audioStart === "string"
+      ? (q as { audioStart: string }).audioStart : "";
+    const audioEnd = typeof (q as { audioEnd?: unknown }).audioEnd === "string"
+      ? (q as { audioEnd: string }).audioEnd : "";
     if (submitted) {
       const perQAudio =
         (typeof (q as { audio_url?: unknown }).audio_url === "string" && (q as { audio_url: string }).audio_url) ||
@@ -1431,17 +1486,52 @@ function ListeningContent({
           ? (q as { audio_translation: string }).audio_translation
           : null;
       const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
-      if (perQAudio || lines.length > 0 || hasTranslation) {
+      if (perQAudio || lines.length > 0 || hasTranslation || audioStart) {
         elems.push(
           <ListenAudioAndScript
             key={`${id}-audio-script`}
             audioSrc={perQAudio}
             lines={lines}
             audioTranslation={audioTranslation}
+            examAudioRef={examAudioRef}
+            audioStart={audioStart || null}
+            audioEnd={audioEnd || null}
           />,
         );
       }
     }
+
+    // ▶ play-this-question button anchored at the top-right of the
+    // first MemoQBlock for the question. Only meaningful when an
+    // exam-level audio is loaded AND admin tagged this question
+    // with an audioStart offset. `wrapWithPlayBtn` consumes the
+    // button on first invocation so listen_togo (multiple sub
+    // blocks) only shows one button at the top.
+    const showPlayBtn = !!audioUrl && !!audioStart && submitted;
+    let pendingPlayBtn: React.ReactNode = showPlayBtn ? (
+      <button
+        type="button"
+        className="q-play-btn"
+        title={`Phát từ ${audioStart}${audioEnd ? ` → ${audioEnd}` : ""}`}
+        onClick={() => {
+          const audio = examAudioRef.current;
+          if (!audio) return;
+          audio.currentTime = parseTimecode(audioStart);
+          void audio.play().catch(() => { /* user-gesture rules */ });
+        }}
+      >▶</button>
+    ) : null;
+    const wrapWithPlayBtn = (block: React.ReactNode, key: string): React.ReactNode => {
+      if (!pendingPlayBtn) return block;
+      const wrapped = (
+        <div key={`${key}-wrap`} className="listen-q-wrap">
+          {pendingPlayBtn}
+          {block}
+        </div>
+      );
+      pendingPlayBtn = null;
+      return wrapped;
+    };
 
     if (type === "listen_togo") {
       const t1 = q.type1 as SubQuestion | undefined;
@@ -1458,12 +1548,13 @@ function ListeningContent({
         }
         const key = `${id}-t1`;
         const choices = getChoices(t1);
-        elems.push(
+        elems.push(wrapWithPlayBtn(
           <MemoQBlock key={key} qKey={key} num={qNum++} qText=""
             choices={choices} qType={type} sideImageUrl={getSubImageUrl(t1 as Record<string,unknown>)}
             selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-            explainData={t1} onAddToAnki={onAddToAnki} passageText={t1.mainQuestion ?? ""} />
-        );
+            explainData={t1} onAddToAnki={onAddToAnki} passageText={t1.mainQuestion ?? ""} />,
+          key,
+        ));
       }
       if (t2) {
         if (t2.mainQuestion) {
@@ -1479,12 +1570,13 @@ function ListeningContent({
         (t2.questions ?? []).forEach((sq, i) => {
           const key = `${id}-t2-${i}`;
           const choices = getChoices(sq);
-          elems.push(
+          elems.push(wrapWithPlayBtn(
             <MemoQBlock key={key} qKey={key} num={qNum++} qText=""
               choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
               selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-              explainData={sq} onAddToAnki={onAddToAnki} passageText={t2Main} />
-          );
+              explainData={sq} onAddToAnki={onAddToAnki} passageText={t2Main} />,
+            key,
+          ));
         });
       }
     } else {
@@ -1494,12 +1586,13 @@ function ListeningContent({
         const key = `${id}-${i}`;
         const choices = getChoices(sq);
         const nums = choices.length <= 3 ? NUMS.slice(0, 3) : NUMS;
-        elems.push(
+        elems.push(wrapWithPlayBtn(
           <MemoQBlock key={key} qKey={key} num={qNum++} qText={sq.question ?? ""}
             choices={choices} qType={type} sideImageUrl={getSubImageUrl(sq as Record<string,unknown>)}
             selectedIdx={answers[key]} correctIdx={answerKey[key]} submitted={submitted} onPick={onPick}
-            explainData={sq} onAddToAnki={onAddToAnki} />
-        );
+            explainData={sq} onAddToAnki={onAddToAnki} />,
+          key,
+        ));
       });
     }
   });
