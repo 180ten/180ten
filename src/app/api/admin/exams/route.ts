@@ -7,7 +7,8 @@ type Body =
   | { action: "toggle_publish" | "toggle_premium"; exam_id: string; value?: boolean }
   | { action: "delete"; exam_id: string }
   | { action: "upsert_exam"; examRow: Record<string, unknown> }
-  | { action: "upsert_questions"; questions: Record<string, unknown>[] };
+  | { action: "upsert_questions"; questions: Record<string, unknown>[] }
+  | { action: "delete_questions"; exam_id: string; ids: string[] };
 
 // Allowlist of exam columns the client may set — keeps unknown / sensitive
 // fields out of the DB even if the caller is admin-authenticated.
@@ -40,6 +41,33 @@ export async function POST(req: Request) {
       const id = cleaned.id;
       if (typeof id === "string") revalidateTag(`exam-${id}`, "max");
       return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "delete_questions") {
+      // Remove specific question rows the admin deleted in the composer
+      // before the next upsert step inserts the surviving ones. Scoped
+      // to exam_id so a malformed payload can't wipe rows from a
+      // different exam. Same 50-per-call cap as upsert_questions; the
+      // client chunks if it sent more.
+      if (!body.exam_id || typeof body.exam_id !== "string") {
+        return NextResponse.json({ error: "exam_id required" }, { status: 400 });
+      }
+      if (!Array.isArray(body.ids) || body.ids.length === 0) {
+        return NextResponse.json({ ok: true, count: 0 });
+      }
+      if (body.ids.length > 50) {
+        return NextResponse.json({ error: "max 50 ids per call" }, { status: 400 });
+      }
+      const ids = body.ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+      if (ids.length === 0) return NextResponse.json({ ok: true, count: 0 });
+      const { error } = await service
+        .from("questions")
+        .delete()
+        .eq("exam_id", body.exam_id)
+        .in("id", ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      revalidateTag(`exam-${body.exam_id}`, "max");
+      return NextResponse.json({ ok: true, count: ids.length });
     }
 
     if (body.action === "upsert_questions") {

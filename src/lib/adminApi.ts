@@ -60,8 +60,23 @@ export async function adminGet<T = unknown>(path: string): Promise<T> {
 // RLS — these helpers route writes through the admin endpoint where the
 // service role bypasses RLS.
 
+// (adminDeleteQuestions defined after this block — keeps the upsert
+// pair next to each other up top.)
+
 export async function adminUpsertExam(examRow: Record<string, unknown>): Promise<void> {
   await adminCall("/api/admin/exams", { action: "upsert_exam", examRow });
+}
+
+export async function adminDeleteQuestions(examId: string, ids: string[]): Promise<void> {
+  if (!examId || !ids?.length) return;
+  // Server caps at 50 per call; chunk client-side to match.
+  for (let i = 0; i < ids.length; i += 50) {
+    await adminCall("/api/admin/exams", {
+      action: "delete_questions",
+      exam_id: examId,
+      ids: ids.slice(i, i + 50),
+    });
+  }
 }
 
 export async function adminUpsertQuestions(questions: Record<string, unknown>[]): Promise<void> {

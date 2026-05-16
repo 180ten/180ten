@@ -11,7 +11,7 @@ import {
 } from "@/lib/audioScript";
 import { sanitizedRenderRichInline } from "@/lib/furigana";
 import { sb } from "@/lib/supabase";
-import { adminUpsertExam, adminUpsertQuestions, AdminApiError } from "@/lib/adminApi";
+import { adminUpsertExam, adminUpsertQuestions, adminDeleteQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
 import {
   C, iBase, taBase,
@@ -2271,15 +2271,21 @@ function ExamModal({ initial, onConfirm, onClose }: {
 }
 
 // ─── SAVE MODAL ───────────────────────────────────────────────────
-function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
+function SaveModal({ exam, questions, audioUrl, deletedQuestionIds, onClose, onSaved, showToast }: {
   exam: ExamMeta; questions: ComposeQuestion[]; audioUrl: string;
-  onClose: () => void; showToast: (msg: string, type?: string) => void;
+  deletedQuestionIds: string[];
+  onClose: () => void;
+  onSaved: () => void;
+  showToast: (msg: string, type?: string) => void;
 }) {
   const [status, setStatus] = useState<"idle"|"saving"|"revalidating"|"done"|"error">("idle");
   const [errMsg, setErrMsg] = useState("");
 
   const doSave = async () => {
-    if (!questions.length) { setErrMsg("Chưa có câu hỏi nào để lưu."); return; }
+    if (!questions.length && deletedQuestionIds.length === 0) {
+      setErrMsg("Chưa có câu hỏi nào để lưu.");
+      return;
+    }
     setStatus("saving"); setErrMsg("");
 	    const examRow = {
 	      id: exam.id, name: exam.name, level: exam.level,
@@ -2297,6 +2303,19 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
       const msg = e instanceof AdminApiError ? e.message : (e as Error).message;
       console.error("exam upsert error:", msg);
       setStatus("error"); setErrMsg("Lỗi upsert exam: " + msg); return;
+    }
+    // Apply pending deletes BEFORE the upsert so a deleted row never
+    // collides with a re-added one carrying the same id. Scoped to
+    // exam.id server-side; client-only ids that were never written
+    // just match no rows and no-op.
+    if (deletedQuestionIds.length > 0) {
+      try {
+        await adminDeleteQuestions(exam.id, deletedQuestionIds);
+      } catch (e) {
+        const msg = e instanceof AdminApiError ? e.message : (e as Error).message;
+        console.error("questions delete error:", msg);
+        setStatus("error"); setErrMsg("Lỗi xoá câu: " + msg); return;
+      }
     }
     const qs = questions.map((q, i) => {
       // Mirror the per-question audio override + transcript out to the
@@ -2341,6 +2360,9 @@ function SaveModal({ exam, questions, audioUrl, onClose, showToast }: {
       console.warn("[Compose] revalidate failed (non-fatal):", e);
     }
     setStatus("done");
+    // Pending deletes successfully flushed → let the parent clear
+    // its accumulator so a re-save doesn't repeat them.
+    onSaved();
 	    showToast(`Đã lưu và xuất bản bộ đề "${exam.name}" (${questions.length} câu) ✓`, "success");
   };
 
@@ -2393,6 +2415,12 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   const [showExamModal, setShowExamModal] = useState(false);
   const [showSave, setShowSave]         = useState(false);
   const [questions, setQuestions]       = useState<ComposeQuestion[]>([]);
+  // IDs of questions the admin clicked ✕ on since the last load —
+  // accumulated locally and flushed to the DB on "💾 Lưu bộ đề" so
+  // deletes survive a reload. Client-only IDs that were never saved
+  // are still safe to include because the server's `.in("id", …)`
+  // simply matches no rows for them.
+  const [deletedQuestionIds, setDeletedQuestionIds] = useState<string[]>([]);
   const [exportingVocab, setExportingVocab] = useState(false);
   const [editingId, setEditingId]       = useState<string|null>(null);
   const [activeId, setActiveId]         = useState("kanji");
@@ -2504,6 +2532,10 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   };
   const handleDelete = (id: string) => {
     setQuestions(qs => qs.filter(q => q.id!==id));
+    // Stage the deletion so it persists on save. Safe to add even
+    // for IDs that were never written to the DB (client-only new
+    // questions) — the server's delete query just no-ops on those.
+    if (id) setDeletedQuestionIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     if (editingId===id) { setEditingId(null); resetForm(); }
   };
   const handleReorder = (newQs: ComposeQuestion[]) => setQuestions(newQs);
@@ -2768,6 +2800,9 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
         setBjtAudio({ part1:"", part2:"" }); setBjtAudioDraft({ part1:"", part2:"" });
       }
       setQuestions(loadedQs); setFormData(newFormData); setEditingId(null);
+      // Fresh DB snapshot — any pending deletes from a previous
+      // editing session no longer apply.
+      setDeletedQuestionIds([]);
       showToast(`Đã load đề "${examData.name}" — chỉnh sửa rồi nhấn Lưu bộ đề`, "default");
     } finally { setLoadingExam(false); }
   }, [showToast]);
@@ -2806,7 +2841,17 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   return (
     <div style={{ height: "100vh", maxHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'DM Sans','Helvetica Neue',sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {showExamModal && <ExamModal initial={exam} onConfirm={e => { setExam(e); setShowExamModal(false); }} onClose={() => setShowExamModal(false)} />}
-      {showSave && <SaveModal exam={exam} questions={questions} audioUrl={exportAudioUrl} onClose={() => setShowSave(false)} showToast={showToast} />}
+      {showSave && (
+        <SaveModal
+          exam={exam}
+          questions={questions}
+          audioUrl={exportAudioUrl}
+          deletedQuestionIds={deletedQuestionIds}
+          onSaved={() => setDeletedQuestionIds([])}
+          onClose={() => setShowSave(false)}
+          showToast={showToast}
+        />
+      )}
       {groupingOpen && (
         <MondaiGroupingModal
           questions={questions}
@@ -2838,6 +2883,7 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
           <button type="button" onClick={() => setShowExamModal(true)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "2px 6px", flexShrink: 0 }}>✎ Sửa</button>
           <button type="button" onClick={() => { if (window.confirm("Tạo bộ đề mới? Câu hỏi hiện tại sẽ bị xóa.")) {
             setExam(null); setQuestions([]); setEditingId(null);
+            setDeletedQuestionIds([]);
             setAudioUrl(""); setAudioUrlDraft("");
             setBjtAudio({ part1:"", part2:"" }); setBjtAudioDraft({ part1:"", part2:"" });
             setShowAudioInput(false);
