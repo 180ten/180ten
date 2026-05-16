@@ -2241,6 +2241,67 @@ function MondaiGroupingModal({
 }
 
 // ─── DRAGGABLE QUESTION LIST ──────────────────────────────────────
+// ── Bracket-balance validation ───────────────────────────────────
+// Walks every string field in a ComposeQuestion looking for tag
+// brackets that don't pair correctly. Surfaces the 3 common author
+// mistakes:
+//   • mismatch  → 〖text〕 / 〔text〗 (wrong closer)
+//   • unclosed  → only the opener, no closer
+//   • unopened  → only the closer, no opener
+//
+// Linear O(N) per string; for typical exams (~30 questions × dozens
+// of small string fields) the total scan is sub-millisecond and runs
+// on every DraggableQuestionList render via useMemo.
+type BracketError =
+  | { kind: "mismatch"; pos: number; got: string; expected: string }
+  | { kind: "unclosed"; pos: number; open: "〖" | "〔" }
+  | { kind: "unopened"; pos: number; close: "〗" | "〕" };
+
+function scanBracketErrors(text: string): BracketError[] {
+  const errors: BracketError[] = [];
+  const stack: { open: "〖" | "〔"; pos: number }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "〖" || ch === "〔") {
+      stack.push({ open: ch, pos: i });
+    } else if (ch === "〗" || ch === "〕") {
+      const top = stack.pop();
+      if (!top) {
+        errors.push({ kind: "unopened", pos: i, close: ch as "〗" | "〕" });
+      } else {
+        const expected = top.open === "〖" ? "〗" : "〕";
+        if (ch !== expected) {
+          errors.push({ kind: "mismatch", pos: i, got: ch, expected });
+        }
+      }
+    }
+  }
+  for (const left of stack) {
+    errors.push({ kind: "unclosed", pos: left.pos, open: left.open });
+  }
+  return errors;
+}
+
+function questionBracketErrors(q: ComposeQuestion): BracketError[] {
+  const errors: BracketError[] = [];
+  const visit = (v: unknown): void => {
+    if (v == null) return;
+    if (typeof v === "string") { errors.push(...scanBracketErrors(v)); return; }
+    if (Array.isArray(v)) { v.forEach(visit); return; }
+    if (typeof v === "object") Object.values(v as Record<string, unknown>).forEach(visit);
+  };
+  visit(q);
+  return errors;
+}
+
+function formatBracketError(e: BracketError): string {
+  if (e.kind === "mismatch")
+    return `⚠️ Ngoặc sai loại tại vị trí ${e.pos}: có "${e.got}" nhưng cần "${e.expected}"`;
+  if (e.kind === "unclosed")
+    return `⚠️ Thiếu ngoặc đóng cho "${e.open}" tại vị trí ${e.pos}`;
+  return `⚠️ Ngoặc đóng "${e.close}" tại vị trí ${e.pos} không có ngoặc mở`;
+}
+
 function DraggableQuestionList({ questions, editingId, onEdit, onDelete, onReorder, typeOrder }: {
   questions: ComposeQuestion[];
   editingId: string | null;
@@ -2276,6 +2337,18 @@ function DraggableQuestionList({ questions, editingId, onEdit, onDelete, onReord
     onReorder(newQs); setDragging(null); setDragOver(null);
   };
   const handleDragEnd = () => { setDragging(null); setDragOver(null); };
+  // Bracket-error map keyed by question id. Re-derived only when the
+  // questions array changes; admin typing inside the active form
+  // doesn't touch this state, so re-scan is cheap.
+  const errorMap = useMemo(() => {
+    const m = new Map<string, BracketError[]>();
+    for (const q of questions) {
+      const errs = questionBracketErrors(q);
+      if (errs.length > 0) m.set(q.id, errs);
+    }
+    return m;
+  }, [questions]);
+
   if (!questions.length) return (
     <div style={{ padding: "32px 16px", textAlign: "center" }}>
       <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.2 }}>📋</div>
@@ -2306,6 +2379,13 @@ function DraggableQuestionList({ questions, editingId, onEdit, onDelete, onReord
                   opacity: isDraggingThis?0.4:1, transition: "all 0.1s", userSelect: "none" }}>
                 <span style={{ fontSize: 10, color: C.muted2, cursor: "grab", flexShrink: 0 }}>⠿</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: grp.color, minWidth: 16, flexShrink: 0 }}>{i+1}</span>
+                {errorMap.has(q.id) && (
+                  <span
+                    style={{ flexShrink: 0, cursor: "help", fontSize: 14, lineHeight: 1 }}
+                    title={errorMap.get(q.id)!.map(formatBracketError).join("\n")}
+                    onClick={(e) => { e.stopPropagation(); onEdit(q); }}
+                  >⚠️</span>
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 11, color: active?C.text:C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{preview}{preview.length>=32?"…":""}</div>
                 </div>
