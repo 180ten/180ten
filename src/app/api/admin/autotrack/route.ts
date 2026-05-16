@@ -15,7 +15,11 @@ export async function GET(req: Request): Promise<NextResponse> {
   try {
     const { service } = await requireAdmin(req);
 
-    const [vocabRes, grammarRes] = await Promise.all([
+    // learned_tags: surfaces an admin has explicitly tagged inside a
+    // passage and saved via the "📖 Học" button. Auto-track gives them
+    // priority over the dictionaries so freshly-learned forms always
+    // win against shorter dictionary entries.
+    const [vocabRes, grammarRes, learnedRes] = await Promise.all([
       service
         .from("vocabulary_library")
         .select("word, variants")
@@ -24,6 +28,10 @@ export async function GET(req: Request): Promise<NextResponse> {
         .from("grammar_library")
         .select("name")
         .order("name"),
+      service
+        .from("learned_tags")
+        .select("surface, tag_type")
+        .order("surface"),
     ]);
 
     if (vocabRes.error) {
@@ -32,10 +40,15 @@ export async function GET(req: Request): Promise<NextResponse> {
     if (grammarRes.error) {
       return NextResponse.json({ error: grammarRes.error.message }, { status: 500 });
     }
+    // learned_tags is brand new — if the migration hasn't been applied
+    // yet (or the table is empty), fall back to [] rather than 500ing
+    // the whole dictionary fetch.
+    const learned = learnedRes.error ? [] : (learnedRes.data ?? []);
 
     return NextResponse.json({
       vocab: vocabRes.data ?? [],
       grammar: grammarRes.data ?? [],
+      learned,
     });
   } catch (e) {
     return adminErrorResponse(e);

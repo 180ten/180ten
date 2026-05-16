@@ -15,6 +15,12 @@
 export interface AutoTrackDict {
   vocab:   Array<{ word: string; variants?: string[] | null }>;
   grammar: Array<{ name: string }>;
+  /** Surfaces an admin has explicitly tagged inside a passage and
+   *  taught the system via /api/admin/learned-tags. Pushed FIRST so
+   *  the de-dup step prefers them over conflicting dictionary
+   *  entries (still sorted by length so a longer dictionary surface
+   *  can outrank a shorter learned one — which is what we want). */
+  learned?: Array<{ surface: string; tag_type: "vocab" | "grammar" }>;
 }
 
 interface MatchEntry {
@@ -26,6 +32,13 @@ const BRACKET_RE = /〖[^〗]*〗|〔[^〕]*〕/g;
 
 function buildEntries(dict: AutoTrackDict): MatchEntry[] {
   const entries: MatchEntry[] = [];
+  // Learned tags first — at equal surface length the de-dup below
+  // keeps the earlier insertion, so admin-curated tags win against
+  // a same-surface dictionary fallback.
+  for (const l of dict.learned ?? []) {
+    const s = (l.surface ?? "").trim();
+    if (s) entries.push({ surface: s, type: l.tag_type });
+  }
   for (const v of dict.vocab) {
     const w = (v.word ?? "").trim();
     if (w) entries.push({ surface: w, type: "vocab" });

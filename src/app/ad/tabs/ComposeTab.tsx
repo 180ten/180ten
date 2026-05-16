@@ -207,6 +207,7 @@ function BracketBtn({ targetRef, style }: {
 // Module-level cache for the dictionary so repeated clicks across
 // every textarea / RichTa share one fetch (5 min TTL).
 let autoTrackDictCache: { data: AutoTrackDict; ts: number } | null = null;
+function invalidateAutoTrackDict(): void { autoTrackDictCache = null; }
 async function fetchAutoTrackDict(): Promise<AutoTrackDict> {
   if (autoTrackDictCache && Date.now() - autoTrackDictCache.ts < 5 * 60 * 1000) {
     return autoTrackDictCache.data;
@@ -220,6 +221,93 @@ async function fetchAutoTrackDict(): Promise<AutoTrackDict> {
   const data = (await res.json()) as AutoTrackDict;
   autoTrackDictCache = { data, ts: Date.now() };
   return data;
+}
+
+// ── Learn button ──
+// Sweeps every 〖vocab〗 and 〔grammar〕 surface in the current
+// textarea and POSTs them to /api/admin/learned-tags. Server skips
+// duplicates and reports surface/type conflicts. After a successful
+// POST the auto-track dict cache is invalidated so the next click
+// of ⚡ Auto-track sees the freshly-learned tags.
+interface ExtractedTag { surface: string; tag_type: "vocab" | "grammar" }
+function extractTagsFromText(text: string): ExtractedTag[] {
+  const tags: ExtractedTag[] = [];
+  const seen = new Set<string>();
+  const push = (surface: string, tag_type: "vocab" | "grammar") => {
+    const s = surface.trim();
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    tags.push({ surface: s, tag_type });
+  };
+  let m: RegExpExecArray | null;
+  const vocabRe = /〖([^〗]+)〗/g;
+  while ((m = vocabRe.exec(text)) !== null) push(m[1], "vocab");
+  const grammarRe = /〔([^〕]+)〕/g;
+  while ((m = grammarRe.exec(text)) !== null) push(m[1], "grammar");
+  return tags;
+}
+
+function LearnBtn({ targetRef, style, beforeClick }: {
+  targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  style?: React.CSSProperties;
+  beforeClick?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className="compose-tag-btn learn"
+      title="Học các tag 〖〗〔〕trong ô này — Auto-track sẽ nhớ chúng cho lần sau"
+      disabled={busy}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={async () => {
+        beforeClick?.();
+        const el = targetRef.current;
+        if (!el) return;
+        const tags = extractTagsFromText(el.value);
+        if (tags.length === 0) {
+          alert("Không tìm thấy tag 〖〗 hay 〔〕 nào trong ô này.");
+          return;
+        }
+        setBusy(true);
+        try {
+          const session = await sb.auth.getSession();
+          const token = session.data.session?.access_token;
+          const res = await fetch("/api/admin/learned-tags", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ tags }),
+          });
+          const result = await res.json() as { added?: number; skipped?: number; conflicts?: string[]; error?: string };
+          if (!res.ok) {
+            alert(`Lỗi học tag: ${result.error ?? res.statusText}`);
+            return;
+          }
+          // Invalidate the auto-track dict cache so the next ⚡ pass
+          // pulls the freshly-learned surfaces from the server.
+          invalidateAutoTrackDict();
+          const lines: string[] = [];
+          if ((result.added ?? 0) > 0)   lines.push(`✅ Đã học ${result.added} tag mới.`);
+          if ((result.skipped ?? 0) > 0) lines.push(`⏭ Bỏ qua ${result.skipped} tag đã có.`);
+          if (result.conflicts && result.conflicts.length > 0) {
+            lines.push(`⚠️ Conflict (bỏ qua):\n${result.conflicts.join("\n")}`);
+          }
+          alert(lines.length > 0 ? lines.join("\n") : "Không có tag mới nào được học.");
+        } catch (err) {
+          console.warn("[learn] failed:", err);
+          alert("Lỗi mạng khi học tag — xem console.");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      style={style}
+    >
+      {busy ? "⏳" : "📖"} Học
+    </button>
+  );
 }
 
 // Apply autoTrack to either the current selection or the whole textarea
@@ -308,6 +396,7 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
       <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
         <BracketBtn targetRef={ref} />
         <AutoTrackBtn targetRef={ref} />
+        <LearnBtn targetRef={ref} />
       </div>
     </div>
   );
@@ -403,6 +492,7 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
             surfaces and wraps them. rememberSelection runs first so
             the user's caret survives the click defocus. */}
         <AutoTrackBtn targetRef={taRef} beforeClick={rememberSelection} />
+        <LearnBtn targetRef={taRef} beforeClick={rememberSelection} />
         {([
           ["左", "Căn trái", "left"],
           ["中", "Căn giữa", "center"],
@@ -2472,7 +2562,7 @@ function fxParseListenSheet(rows: FxRow[], type: string, examId: string, level: 
       const w1 = idx("wrong1"), w2 = idx("wrong2"), w3 = idx("wrong3");
       sub.question = fxStr(r[idx("question")]);
       sub.imageUrl = fxStr(r[idx("image_url")]);
-      sub.wrongs = [fxStr(r[w1]), fxStr(r[w2]), fxStr(r[w3])].filter((s, _, a) => a.some((x) => x));
+      sub.wrongs = [fxStr(r[w1]), fxStr(r[w2]), fxStr(r[w3])].filter(Boolean);
     }
     (q.questions as Record<string, unknown>[]).push(sub);
   });
