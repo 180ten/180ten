@@ -1257,24 +1257,24 @@ function ListenAudioAndScript({
                 <div ref={scriptContainerRef} className="script-paragraph">
                   {lines.map((line, idx) => {
                     // [SPACE] rows are layout-only spacers admins added
-                    // via the toolbar — render a hard line break with no
+                    // via the toolbar — render a thin gap div with no
                     // click target / timecode.
-                    if (line.text === "[SPACE]") return <br key={idx} />;
+                    if (line.text === "[SPACE]") return <div key={idx} className="script-spacer" aria-hidden />;
                     // *bold*/_italic_ → <strong>/<em> before the rich
                     // renderer runs; sanitizer keeps both on its
                     // allowlist so the inline markup survives.
                     const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
                     return (
-                      <span
+                      <div
                         key={idx}
                         data-line-idx={idx}
                         className={`script-sentence${activeLine === idx ? " active" : ""}`}
                         onClick={() => handleLineClick(idx, line.start)}
                         title={line.start ? `▶ ${line.start}` : undefined}
-                        // sanitizedRenderRich emits a wrapping <div> (block) —
-                        // would force every sentence onto its own line. The
-                        // *Inline variant skips the wrapper while keeping
-                        // furigana / vocab / grammar tag rendering intact.
+                        // Each sentence renders on its own line now; the
+                        // *Inline variant of sanitizedRenderRich still
+                        // keeps furigana / vocab / grammar tags intact
+                        // without adding a nested wrapper div.
                         dangerouslySetInnerHTML={{ __html: html }}
                       />
                     );

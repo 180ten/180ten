@@ -1329,16 +1329,17 @@ function AudioScriptEditor({
       }
 
       const newLines: AudioScriptLine[] = rows
-        .map((row) => ({
-          start: normalizeImportTimecode(row[0] as string | number),
-          end:   normalizeImportTimecode(row[1] as string | number),
-          // Each row already renders on its own line, so an empty C
-          // cell is just noise — drop those rows in the filter below.
-          // Admins who actually want a layout spacer write the literal
-          // "[SPACE]" in the C cell.
-          text:  String(row[2] ?? "").trim(),
-        }))
-        .filter((line) => line.text);
+        .map((row) => {
+          const start = normalizeImportTimecode(row[0] as string | number);
+          const end   = normalizeImportTimecode(row[1] as string | number);
+          const raw   = String(row[2] ?? "").trim();
+          // Empty content cells become a layout spacer; fully-empty
+          // rows (no timecode either) are dropped by the filter
+          // below so trailing-whitespace rows in the spreadsheet
+          // don't pile up as stray spacers.
+          return { start, end, text: raw === "" ? "[SPACE]" : raw };
+        })
+        .filter((line) => line.start || line.end || line.text !== "[SPACE]");
 
       if (newLines.length === 0) {
         alert("Không tìm thấy dữ liệu. Kiểm tra file có đúng format: cột A=Start, B=End, C=Nội dung");
@@ -1471,9 +1472,9 @@ function AudioScriptEditor({
           <div className="ase-preview-label">👁 Preview</div>
           <div className="ase-preview-content">
             {lines.map((line, idx) => {
-              if (line.text === "[SPACE]") return <br key={idx} />;
+              if (line.text === "[SPACE]") return <div key={idx} className="ase-preview-spacer" aria-hidden />;
               return (
-                <span
+                <div
                   key={idx}
                   className="ase-preview-sentence"
                   dangerouslySetInnerHTML={{
