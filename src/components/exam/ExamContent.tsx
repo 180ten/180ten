@@ -1156,6 +1156,10 @@ function ListenAudioAndScript({
   // question at the call site, so state resets automatically when
   // the user navigates between questions — no useEffect needed.
   const [showVi, setShowVi] = useState(false);
+  // Script interaction mode. "seek" (default): clicking a sentence
+  // seeks the audio. "vocab": sentences are inert and 〖〗 / 〔〕
+  // tags become clickable for the popup, same as in the VI pane.
+  const [scriptMode, setScriptMode] = useState<"seek" | "vocab">("seek");
   const hasTranslation = !!audioTranslation && audioTranslation.trim().length > 0;
 
   function handleLineClick(idx: number, start: string) {
@@ -1229,7 +1233,12 @@ function ListenAudioAndScript({
             </button>
           </div>
           {open && (
-            <div className={`script-content-wrap${hasTranslation ? " has-translation" : ""}`}>
+            // `has-translation` now means "the right edge holds at
+            // least one action button" — the translate toggle and/or
+            // the JP-mode toggle. Either way the content needs the
+            // 52px right-padding so long sentences don't slide under
+            // the button stack.
+            <div className={`script-content-wrap${(hasTranslation || (!showVi && lines.length > 0)) ? " has-translation" : ""}`}>
               {/* JP/VI toggle anchored to the content area. Reuses
                   .passage-translate-btn for affordance parity with
                   the reading-passage version; --sm modifier shrinks
@@ -1246,6 +1255,23 @@ function ListenAudioAndScript({
                   <img src="/svg/translate.svg" alt="" width={14} height={14} aria-hidden />
                 </button>
               )}
+              {/* Mode toggle: 🎵 (seek/audio) ↔ 📖 (vocab popup). Only
+                  meaningful on the JP pane — VI render already routes
+                  every tag through VocabSegments. Sits to the LEFT of
+                  the translate button (right:44 vs right:8). */}
+              {!showVi && lines.length > 0 && (
+                <button
+                  type="button"
+                  className={`passage-translate-btn passage-translate-btn--sm${scriptMode === "vocab" ? " active" : ""}`}
+                  onClick={() => setScriptMode((m) => (m === "seek" ? "vocab" : "seek"))}
+                  title={scriptMode === "seek" ? "Chuyển sang chế độ xem từ vựng" : "Chuyển sang chế độ nghe"}
+                  aria-pressed={scriptMode === "vocab"}
+                  aria-label={scriptMode === "seek" ? "Bật chế độ từ vựng" : "Bật chế độ nghe"}
+                  style={{ right: hasTranslation ? 44 : 8 }}
+                >
+                  {scriptMode === "seek" ? "📖" : "🎵"}
+                </button>
+              )}
               {showVi && hasTranslation ? (
                 <div className="script-vi-content">
                   <VocabSegments
@@ -1260,21 +1286,40 @@ function ListenAudioAndScript({
                     // via the toolbar — render a thin gap div with no
                     // click target / timecode.
                     if (line.text === "[SPACE]") return <div key={idx} className="script-spacer" aria-hidden />;
-                    // *bold*/_italic_ → <strong>/<em> before the rich
-                    // renderer runs; sanitizer keeps both on its
-                    // allowlist so the inline markup survives.
+                    const activeCls = activeLine === idx ? " active" : "";
+                    // Vocab mode: route the line through VocabSegments
+                    // so 〖〗 / 〔〕 spans get the data-word /
+                    // data-grammar attributes the document-level popup
+                    // listener watches for. No row-level onClick — we
+                    // don't want a stray seek when the user is aiming
+                    // at a tag inside.
+                    if (scriptMode === "vocab") {
+                      return (
+                        <div
+                          key={idx}
+                          data-line-idx={idx}
+                          className={`script-sentence script-sentence--vocab-mode${activeCls}`}
+                          title={line.start ? `▶ ${line.start}` : undefined}
+                        >
+                          <VocabSegments
+                            text={applyScriptInlineMarkup(line.text)}
+                            renderText={sanitizedRenderRichInline}
+                          />
+                        </div>
+                      );
+                    }
+                    // Seek mode (default): click anywhere on the row
+                    // seeks the audio. Same dangerouslySetInnerHTML
+                    // path as before — 〖〗 / 〔〕 render as literal
+                    // text in this mode.
                     const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
                     return (
                       <div
                         key={idx}
                         data-line-idx={idx}
-                        className={`script-sentence${activeLine === idx ? " active" : ""}`}
+                        className={`script-sentence${activeCls}`}
                         onClick={() => handleLineClick(idx, line.start)}
                         title={line.start ? `▶ ${line.start}` : undefined}
-                        // Each sentence renders on its own line now; the
-                        // *Inline variant of sanitizedRenderRich still
-                        // keeps furigana / vocab / grammar tags intact
-                        // without adding a nested wrapper div.
                         dangerouslySetInnerHTML={{ __html: html }}
                       />
                     );

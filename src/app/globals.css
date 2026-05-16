@@ -981,6 +981,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .script-sentence:hover{background:#e0f2fe;}
 .script-sentence.active{background:#bae6fd;font-weight:500;}
 .script-spacer{height:.8em;}
+/* Vocab-popup mode: row is inert (cursor:default, no hover bg),
+   only the inner vocab/grammar tags carry the pointer affordance. */
+.script-sentence--vocab-mode{cursor:default;}
+.script-sentence--vocab-mode:hover{background:transparent;}
+.script-sentence--vocab-mode.active{background:#bae6fd;}
+.script-sentence--vocab-mode .vocab-tag,
+.script-sentence--vocab-mode .grammar-tag{cursor:pointer;}
 
 /* AudioScriptEditor (admin ComposeTab) — dark variant matching
    admin shell. Uses inline-style colors via vars where available. */
