@@ -1064,6 +1064,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .compose-btn:disabled{opacity:.6;cursor:wait;}
 .compose-btn-vocab-export{background:#fdf4ff;border:1.5px solid #d8b4fe;color:#7c3aed;}
 .compose-btn-vocab-export:hover:not(:disabled){background:#f3e8ff;border-color:#c084fc;}
+.compose-btn-learn-all{background:#7c3aed;border:1.5px solid #7c3aed;color:#fff;}
+.compose-btn-learn-all:hover:not(:disabled){background:#6d28d9;border-color:#6d28d9;}
 
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}

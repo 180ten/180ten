@@ -10,6 +10,8 @@ import {
   type AudioScriptLine,
 } from "@/lib/audioScript";
 import { sanitizedRenderRichInline } from "@/lib/furigana";
+import { extractVocabSegments } from "@/lib/vocabTag";
+import { extractGrammarSegments } from "@/lib/grammarTag";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, adminDeleteQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -439,7 +441,6 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
       <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
         <BracketBtn targetRef={ref} />
         <AutoTrackBtn targetRef={ref} />
-        <LearnBtn targetRef={ref} />
       </div>
     </div>
   );
@@ -558,7 +559,6 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
             surfaces and wraps them. rememberSelection runs first so
             the user's caret survives the click defocus. */}
         <AutoTrackBtn targetRef={taRef} beforeClick={rememberSelection} />
-        <LearnBtn targetRef={taRef} beforeClick={rememberSelection} />
         {([
           ["左", "Căn trái", "left"],
           ["中", "Căn giữa", "center"],
@@ -2549,6 +2549,7 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   // simply matches no rows for them.
   const [deletedQuestionIds, setDeletedQuestionIds] = useState<string[]>([]);
   const [exportingVocab, setExportingVocab] = useState(false);
+  const [learningAll, setLearningAll] = useState(false);
   const [editingId, setEditingId]       = useState<string|null>(null);
   const [activeId, setActiveId]         = useState("kanji");
   const [formData, setFormData]         = useState<Record<string,QData>>(() =>
@@ -2749,6 +2750,91 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
       showToast("Lỗi export — xem console để chi tiết.", "error");
     } finally {
       setExportingVocab(false);
+    }
+  };
+
+  // ── Bulk "📖 Học tất cả" — sweep every 〖vocab〗 / 〔grammar〕
+  // surface out of every question and POST them to learned_tags in
+  // one shot. Uses the canonical lookup form for each:
+  //   • vocab   → extractVocabSegments(...).word     (after extractWordFromTag)
+  //   • grammar → extractGrammarSegments(...).lookup (after | split)
+  // so auto-track recognises the surfaces as they actually appear in
+  // passage text. Chunks at 100 to stay under any future server cap.
+  const handleLearnAll = async () => {
+    if (!questions.length) return;
+    setLearningAll(true);
+    try {
+      const strings: string[] = [];
+      const visit = (v: unknown): void => {
+        if (v == null) return;
+        if (typeof v === "string") { strings.push(v); return; }
+        if (Array.isArray(v)) { v.forEach(visit); return; }
+        if (typeof v === "object") Object.values(v as Record<string, unknown>).forEach(visit);
+      };
+      questions.forEach((q) => visit(q));
+
+      const seen = new Set<string>();
+      const tags: { surface: string; tag_type: "vocab" | "grammar" }[] = [];
+      for (const s of strings) {
+        for (const seg of extractVocabSegments(s)) {
+          if (seg.type !== "vocab") continue;
+          const surface = seg.word.trim();
+          if (!surface) continue;
+          const key = `vocab:${surface}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tags.push({ surface, tag_type: "vocab" });
+        }
+        for (const seg of extractGrammarSegments(s)) {
+          if (seg.type !== "grammar") continue;
+          const surface = seg.lookup.trim();
+          if (!surface) continue;
+          const key = `grammar:${surface}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tags.push({ surface, tag_type: "grammar" });
+        }
+      }
+
+      if (tags.length === 0) {
+        alert("Không tìm thấy 〖từ vựng〗 hay 〔ngữ pháp〕 nào trong đề.");
+        return;
+      }
+
+      const session = await sb.auth.getSession();
+      const token = session.data.session?.access_token;
+      let added = 0, skipped = 0;
+      const conflicts: string[] = [];
+      const CHUNK = 100;
+      for (let i = 0; i < tags.length; i += CHUNK) {
+        const chunk = tags.slice(i, i + CHUNK);
+        const res = await fetch("/api/admin/learned-tags", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ tags: chunk }),
+        });
+        const json = await res.json() as { added?: number; skipped?: number; conflicts?: string[]; error?: string };
+        if (!res.ok) throw new Error(json.error ?? res.statusText);
+        added   += json.added   ?? 0;
+        skipped += json.skipped ?? 0;
+        if (json.conflicts?.length) conflicts.push(...json.conflicts);
+      }
+      // Next ⚡ Auto-track pull picks up the freshly-learned surfaces.
+      invalidateAutoTrackDict();
+
+      const lines: string[] = [];
+      lines.push(`✅ Đã học ${added} từ/ngữ pháp mới.`);
+      if (skipped > 0) lines.push(`⏭ Bỏ qua ${skipped} đã có.`);
+      if (conflicts.length > 0) lines.push(`⚠️ Conflict (bỏ qua):\n${conflicts.join("\n")}`);
+      alert(lines.join("\n"));
+    } catch (err) {
+      console.warn("[learn-all] failed:", err);
+      alert(`Lỗi học tag: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLearningAll(false);
     }
   };
 
@@ -3054,6 +3140,17 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               title="Export danh sách 〖từ vựng〗 và 〔ngữ pháp〕 trong đề ra Excel"
             >
               {exportingVocab ? "⏳" : "📤"} Export từ vựng
+            </button>
+          )}
+          {questions.length>0 && (
+            <button
+              type="button"
+              className="compose-btn compose-btn-learn-all"
+              onClick={handleLearnAll}
+              disabled={learningAll}
+              title="Học tất cả 〖từ vựng〗 và 〔ngữ pháp〕 trong đề — Auto-track sẽ nhớ chúng cho lần sau"
+            >
+              {learningAll ? "⏳ Đang học..." : "📖 Học tất cả"}
             </button>
           )}
           {questions.length>0 && <button type="button" onClick={() => setShowSave(true)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>💾 Lưu bộ đề</button>}
