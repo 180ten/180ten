@@ -429,15 +429,71 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
 }) {
   const [f, setF] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const ta = (
-    <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      rows={rows} style={{ ...taBase, borderColor: f ? C.accent : C.border2, ...(noBracketBtn ? {} : { flex: 1, minWidth: 0 }) }}
-      onFocus={() => setF(true)} onBlur={() => setF(false)} />
+  const overlayRef = useRef<HTMLDivElement>(null);
+  // Bracket-error highlight overlay — re-derived on every value
+  // change. The overlay div lives above the textarea (pointer-events
+  // none + transparent text), so only the .bracket-err background
+  // boxes show through under the textarea's visible glyphs.
+  const bracketErrors = useMemo(() => scanBracketErrors(value), [value]);
+  const overlayHTML = useMemo(
+    () => buildBracketHighlightHTML(value, bracketErrors),
+    [value, bracketErrors],
   );
-  if (noBracketBtn) return ta;
+  const hasErr = bracketErrors.length > 0;
+  const onScroll = () => {
+    if (overlayRef.current && ref.current) {
+      overlayRef.current.scrollTop = ref.current.scrollTop;
+      overlayRef.current.scrollLeft = ref.current.scrollLeft;
+    }
+  };
+  // Wrapper carries the flex slot that used to belong to <textarea>
+  // (flex:1, minWidth:0). Textarea now fills the wrapper via taBase
+  // width:100%; overlay is absolute-positioned inside.
+  const taBlock = (
+    <div style={{ position: "relative", ...(noBracketBtn ? {} : { flex: 1, minWidth: 0 }) }}>
+      {hasErr && (
+        <div
+          ref={overlayRef}
+          aria-hidden
+          style={{
+            ...taBase,
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+            color: "transparent",
+            borderColor: "transparent",
+            background: "transparent",
+            whiteSpace: "pre-wrap",
+            wordWrap: "break-word",
+          }}
+          dangerouslySetInnerHTML={{ __html: overlayHTML }}
+        />
+      )}
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={onScroll}
+        placeholder={placeholder}
+        rows={rows}
+        style={{
+          ...taBase,
+          borderColor: f ? C.accent : C.border2,
+          position: "relative",
+          zIndex: 1,
+          background: hasErr ? "transparent" : undefined,
+        }}
+        onFocus={() => setF(true)}
+        onBlur={() => setF(false)}
+      />
+    </div>
+  );
+  if (noBracketBtn) return taBlock;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "flex-start", flexWrap: "wrap" }}>
-      {ta}
+      {taBlock}
       <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
         <BracketBtn targetRef={ref} />
         <AutoTrackBtn targetRef={ref} />
@@ -450,6 +506,19 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
 }) {
   const [f, setF] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const bracketErrors = useMemo(() => scanBracketErrors(value), [value]);
+  const overlayHTML = useMemo(
+    () => buildBracketHighlightHTML(value, bracketErrors),
+    [value, bracketErrors],
+  );
+  const hasErr = bracketErrors.length > 0;
+  const onTaScroll = () => {
+    if (overlayRef.current && taRef.current) {
+      overlayRef.current.scrollTop = taRef.current.scrollTop;
+      overlayRef.current.scrollLeft = taRef.current.scrollLeft;
+    }
+  };
   const selectionRef = useRef({ start: 0, end: 0 });
   const rememberSelection = () => {
     const el = taRef.current;
@@ -578,14 +647,40 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           }} style={{ padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 11, cursor: "pointer", fontWeight: 700 }}>A</button>
         </label>
       </div>
-      <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        rows={rows}
-        onFocus={() => { setF(true); rememberSelection(); }}
-        onBlur={() => { rememberSelection(); setF(false); }}
-        onSelect={rememberSelection}
-        onClick={rememberSelection}
-        onKeyUp={rememberSelection}
-        style={{ ...taBase, border: "none", borderRadius: 0, background: C.panel }} />
+      <div style={{ position: "relative" }}>
+        {hasErr && (
+          <div
+            ref={overlayRef}
+            aria-hidden
+            style={{
+              ...taBase,
+              border: "none",
+              borderRadius: 0,
+              position: "absolute",
+              inset: 0,
+              zIndex: 0,
+              pointerEvents: "none",
+              overflow: "hidden",
+              color: "transparent",
+              background: "transparent",
+              whiteSpace: "pre-wrap",
+              wordWrap: "break-word",
+            }}
+            dangerouslySetInnerHTML={{ __html: overlayHTML }}
+          />
+        )}
+        <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+          rows={rows}
+          onFocus={() => { setF(true); rememberSelection(); }}
+          onBlur={() => { rememberSelection(); setF(false); }}
+          onSelect={rememberSelection}
+          onClick={rememberSelection}
+          onKeyUp={rememberSelection}
+          onScroll={onTaScroll}
+          style={{ ...taBase, border: "none", borderRadius: 0,
+                   background: hasErr ? "transparent" : C.panel,
+                   position: "relative", zIndex: 1 }} />
+      </div>
     </div>
   );
 }
@@ -2280,6 +2375,33 @@ function scanBracketErrors(text: string): BracketError[] {
     errors.push({ kind: "unclosed", pos: left.pos, open: left.open });
   }
   return errors;
+}
+
+// Build an HTML overlay for a single string: wraps each errored
+// bracket character in <span class="bracket-err"> so the overlay
+// renders a red box exactly under that character. Other text is
+// HTML-escaped but kept colour-transparent so only the highlight
+// background shows through — the real textarea on top of the
+// overlay carries the visible glyphs + caret.
+//
+// Trailing "\n" mirrors how <textarea> reserves a final blank line
+// for the last newline, keeping the highlight box aligned.
+function buildBracketHighlightHTML(text: string, errors: BracketError[]): string {
+  if (errors.length === 0) return "";
+  const marks = new Set(errors.map((e) => e.pos));
+  const escape = (s: string) =>
+    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+  let out = "";
+  let last = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (marks.has(i)) {
+      if (i > last) out += escape(text.slice(last, i));
+      out += `<span class="bracket-err">${escape(text[i])}</span>`;
+      last = i + 1;
+    }
+  }
+  if (last < text.length) out += escape(text.slice(last));
+  return out + "\n";
 }
 
 function questionBracketErrors(q: ComposeQuestion): BracketError[] {

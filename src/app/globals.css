@@ -1067,6 +1067,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .compose-btn-learn-all{background:#7c3aed;border:1.5px solid #7c3aed;color:#fff;}
 .compose-btn-learn-all:hover:not(:disabled){background:#6d28d9;border-color:#6d28d9;}
 
+/* ── ComposeTab: bracket-error highlight overlay ─────────────────── */
+/* Wrapped around each errored bracket char in the overlay sitting
+   above Ta / RichTa. Text colour is transparent on the overlay so
+   the textarea's glyphs (rendered on the layer above) stay visible;
+   only the red background + outline show through. */
+.bracket-err{background:rgba(239,68,68,.4);border-radius:2px;outline:1px solid rgba(239,68,68,.6);}
+
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
 .compose-tag-btn.vocab{border-color:#f97316;color:#f97316;background:#fff8f5;}
