@@ -175,6 +175,40 @@ function wrapSelection(
     }
   });
 }
+// Variant of wrapSelection for the 〔display|lookup〕 grammar tag:
+// with a selection → duplicate it on both sides of the pipe so admins
+// only have to edit the lookup half; without a selection → drop an
+// empty 〔|〕 and park the caret in the display slot.
+function wrapGrammarPair(el: HTMLInputElement | HTMLTextAreaElement | null) {
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end   = el.selectionEnd   ?? el.value.length;
+  const selected = el.value.slice(start, end);
+  const insertion = selected ? `〔${selected}|${selected}〕` : "〔|〕";
+  const newVal = el.value.slice(0, start) + insertion + el.value.slice(end);
+  const proto = el instanceof HTMLTextAreaElement
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setter?.call(el, newVal);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  requestAnimationFrame(() => {
+    el.focus();
+    if (selected) {
+      // Park the selection on the LOOKUP half — display is already
+      // what the user wants; lookup is the part they tend to edit.
+      const lookupStart = start + 1 /* 〔 */ + selected.length + 1 /* | */;
+      el.selectionStart = lookupStart;
+      el.selectionEnd   = lookupStart + selected.length;
+    } else {
+      // Empty pair → caret in the display slot (right after 〔).
+      const caret = start + 1;
+      el.selectionStart = caret;
+      el.selectionEnd   = caret;
+    }
+  });
+}
+
 function BracketBtn({ targetRef, style }: {
   targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   style?: React.CSSProperties;
@@ -198,6 +232,15 @@ function BracketBtn({ targetRef, style }: {
         onClick={() => wrapSelection(targetRef.current, "〔", "〕")}
       >
         〔〕
+      </button>
+      <button
+        type="button"
+        className="compose-tag-btn grammar"
+        title="Ngữ pháp kép 〔display|lookup〕 — display là chữ học viên thấy, lookup là từ tra DB"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => wrapGrammarPair(targetRef.current)}
+      >
+        〔|〕
       </button>
     </span>
   );
@@ -446,6 +489,28 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
     const n = Math.max(10, Math.min(36, Number(raw) || 14));
     insert(`[size=${n}]`, "[/size]");
   };
+  // 〔display|lookup〕 helper for the RichTa toolbar — mirrors
+  // wrapGrammarPair but goes through `applyEdit` so the controlled
+  // <textarea> picks up the value change.
+  const insertGrammarPair = () => {
+    const el = taRef.current;
+    if (!el) return;
+    const source = document.activeElement === el
+      ? { start: el.selectionStart, end: el.selectionEnd }
+      : selectionRef.current;
+    const s = Math.max(0, Math.min(value.length, source.start));
+    const e = Math.max(s, Math.min(value.length, source.end));
+    const selected = value.slice(s, e);
+    const insertion = selected ? `〔${selected}|${selected}〕` : "〔|〕";
+    const next = value.slice(0, s) + insertion + value.slice(e);
+    if (selected) {
+      const lookupStart = s + 1 /* 〔 */ + selected.length + 1 /* | */;
+      applyEdit(next, lookupStart, lookupStart + selected.length);
+    } else {
+      const caret = s + 1; // park after 〔, before |
+      applyEdit(next, caret, caret);
+    }
+  };
   const alignLines = (align: "left" | "center" | "right") => {
     const el = taRef.current;
     if (!el) return;
@@ -488,6 +553,7 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           ["〖〗","Đánh dấu từ vựng (review) — bôi đen text rồi bấm để bọc",["〖","〗"]],
           ["〔〕","Đánh dấu ngữ pháp (review) — bôi đen text rồi bấm để bọc",["〔","〕"]],
         ] as [string,string,[string,string]][]).map(([l,t,w]) => toolBtn(l, t, () => insert(w[0], w[1])))}
+        {toolBtn("〔|〕", "Ngữ pháp kép 〔display|lookup〕 — display là chữ học viên thấy, lookup là từ tra DB", insertGrammarPair)}
         {/* Auto-track scans the textarea for known vocab/grammar
             surfaces and wraps them. rememberSelection runs first so
             the user's caret survives the click defocus. */}
