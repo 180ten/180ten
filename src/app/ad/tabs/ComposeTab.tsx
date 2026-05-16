@@ -1332,9 +1332,11 @@ function AudioScriptEditor({
         .map((row) => ({
           start: normalizeImportTimecode(row[0] as string | number),
           end:   normalizeImportTimecode(row[1] as string | number),
-          // Empty content → mark as [SPACE] so admins can use blank C
-          // cells in the spreadsheet to insert layout spacers.
-          text:  String(row[2] ?? "").trim() || "[SPACE]",
+          // Each row already renders on its own line, so an empty C
+          // cell is just noise — drop those rows in the filter below.
+          // Admins who actually want a layout spacer write the literal
+          // "[SPACE]" in the C cell.
+          text:  String(row[2] ?? "").trim(),
         }))
         .filter((line) => line.text);
 
