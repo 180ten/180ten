@@ -1032,13 +1032,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
 .radio-option-num{font-weight:700;font-size:14px;min-width:18px;color:var(--muted);font-family:'Noto Sans JP',sans-serif;text-align:center;}
 .radio-text-option-row:has(input:checked) .radio-option-num{color:var(--accent);}
 
-/* ── ComposeTab: full-exam Export/Import toolbar buttons ──────────── */
+/* ── ComposeTab: vocab/grammar export toolbar button ─────────────── */
 .compose-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s;font-family:'Be Vietnam Pro','Noto Sans JP',sans-serif;line-height:1.2;}
 .compose-btn:disabled{opacity:.6;cursor:wait;}
-.compose-btn-export{background:#f0fdf4;border:1.5px solid #86efac;color:#16a34a;}
-.compose-btn-export:hover:not(:disabled){background:#dcfce7;border-color:#4ade80;}
-.compose-btn-import{background:#eff6ff;border:1.5px solid #93c5fd;color:#1d4ed8;}
-.compose-btn-import:hover{background:#dbeafe;border-color:#60a5fa;}
+.compose-btn-vocab-export{background:#fdf4ff;border:1.5px solid #d8b4fe;color:#7c3aed;}
+.compose-btn-vocab-export:hover:not(:disabled){background:#f3e8ff;border-color:#c084fc;}
 
 /* ── ComposeTab: vocab/grammar insert buttons ─────────────────────── */
 .compose-tag-btn{padding:4px 10px;border-radius:6px;border:1.5px solid;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;background:transparent;line-height:1;transition:background .15s,border-color .15s;}
