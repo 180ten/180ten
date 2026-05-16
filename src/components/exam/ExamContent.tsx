@@ -53,8 +53,11 @@ function VocabSegments({
     if (inner.length === 0) return null;
     return inner.map((part, j) =>
       part.type === "grammar"
-        ? <span key={`${baseKey}-g-${j}`} className="grammar-tag" data-grammar={part.content}
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.content)) }} />
+        // data-grammar carries the lookup half so the popup fetches
+        // grammar_library where name = lookup; the visible HTML
+        // shows the display half (admin's "what learner sees").
+        ? <span key={`${baseKey}-g-${j}`} className="grammar-tag" data-grammar={part.lookup}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.display)) }} />
         : <span key={`${baseKey}-t-${j}`}
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderText(part.value)) }} />
     );

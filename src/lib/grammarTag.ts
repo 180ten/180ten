@@ -10,7 +10,21 @@ const GRAMMAR_TAG_RE = /〔([^〕]+)〕/g;
 
 export type GrammarSegment =
   | { type: "text";    value: string }
-  | { type: "grammar"; content: string };
+  | { type: "grammar"; display: string; lookup: string };
+
+/** Parse a grammar tag's inner text into the visible vs the DB-lookup
+ *  halves. Admins can author 〔display|lookup〕 to show one form and
+ *  query another (e.g. 〔とは|とは〜だ〕 displays "とは" but the popup
+ *  fetches grammar_library where name = "とは〜だ"). When no pipe is
+ *  present both halves are the same string — same shape as before. */
+function splitDisplayLookup(inner: string): { display: string; lookup: string } {
+  const pipeIdx = inner.indexOf("|");
+  if (pipeIdx < 0) return { display: inner, lookup: inner };
+  return {
+    display: inner.slice(0, pipeIdx).trim(),
+    lookup:  inner.slice(pipeIdx + 1).trim(),
+  };
+}
 
 /** Split `text` on 〔...〕 markers. Returns plain-text and grammar
  *  segments interleaved in source order. Empty input → []. */
@@ -21,19 +35,21 @@ export function extractGrammarSegments(text: string): GrammarSegment[] {
   for (const m of text.matchAll(GRAMMAR_TAG_RE)) {
     const idx = m.index ?? 0;
     if (idx > last) segments.push({ type: "text", value: text.slice(last, idx) });
-    segments.push({ type: "grammar", content: m[1] });
+    const { display, lookup } = splitDisplayLookup(m[1]);
+    segments.push({ type: "grammar", display, lookup });
     last = idx + m[0].length;
   }
   if (last < text.length) segments.push({ type: "text", value: text.slice(last) });
   return segments;
 }
 
-/** Remove the 〔...〕 brackets and keep only the inner text. Used in exam
- *  mode (pre-submit) so the visual marker is hidden but the underlying
- *  word still reads naturally. */
+/** Remove the 〔...〕 brackets and keep only the display half (the
+ *  |lookup suffix is dropped). Used in exam mode (pre-submit) so the
+ *  visual marker is hidden but the underlying word still reads
+ *  naturally. */
 export function stripGrammarTags(text: string): string {
   if (!text) return text;
-  return text.replace(GRAMMAR_TAG_RE, "$1");
+  return text.replace(GRAMMAR_TAG_RE, (_, inner) => splitDisplayLookup(inner).display);
 }
 
 // ── Grammar lookup ─────────────────────────────────────────────────────
