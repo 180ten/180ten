@@ -568,6 +568,7 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
           ["縦","Viết dọc từ trên xuống dưới",["[縦]","[/縦]"]],
           ["〖〗","Đánh dấu từ vựng (review) — bôi đen text rồi bấm để bọc",["〖","〗"]],
           ["〔〕","Đánh dấu ngữ pháp (review) — bôi đen text rồi bấm để bọc",["〔","〕"]],
+          ["⟨ans⟩","Tham chiếu đáp án — ⟨ans:nội dung⟩ tự nhảy thành 'Câu X' khi review",["⟨ans:","⟩"]],
         ] as [string,string,[string,string]][]).map(([l,t,w]) => toolBtn(l, t, () => insert(w[0], w[1])))}
         {toolBtn("〔|〕", "Ngữ pháp kép 〔display|lookup〕 — display là chữ học viên thấy, lookup là từ tra DB", insertGrammarPair)}
         {/* Auto-track scans the textarea for known vocab/grammar

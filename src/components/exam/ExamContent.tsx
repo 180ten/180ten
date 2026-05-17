@@ -574,6 +574,21 @@ function ExplainPanel({
   const vocabItems = parseArr<VocabItem>(d.vocab);
   const gramItems  = parseArr<GrammarItem>(d.grammar);
 
+  // ⟨ans:foo⟩ → "Câu N" where N is foo's 1-based position in the
+  // shuffled choices array. Comparison strips 〖〗/〔〕 so admins can
+  // write the bare surface form even when the option carries vocab or
+  // grammar markup. Unknown names render as ⟨ans:foo?⟩ so typos are
+  // visible in review instead of silently disappearing.
+  const choicesArr = Array.isArray(d.choices) ? (d.choices as string[]) : [];
+  const resolveAns = (s: string): string =>
+    s.replace(/⟨ans:([^⟩]+)⟩/g, (_, name) => {
+      const needle = String(name).trim();
+      const i = choicesArr.findIndex(c =>
+        stripVocabTags(stripGrammarTags(c)).trim() === needle
+      );
+      return i >= 0 ? `Câu ${i + 1}` : `⟨ans:${needle}?⟩`;
+    });
+
   const tabs = ["📝 Giải thích", "📖 Từ vựng", "✏️ Ngữ pháp"];
 
   useEffect(() => {
@@ -605,7 +620,7 @@ function ExplainPanel({
             {tab === 0 && (
               expl
                 ? <div style={{ whiteSpace: "pre-wrap" }}>
-                    <VocabSegments text={expl} renderText={sanitizedRenderRichInline} />
+                    <VocabSegments text={resolveAns(expl)} renderText={sanitizedRenderRichInline} />
                   </div>
                 : <span className="explain-empty">Chưa có nội dung.</span>
             )}
