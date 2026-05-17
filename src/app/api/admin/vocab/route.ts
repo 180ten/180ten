@@ -173,10 +173,10 @@ export async function POST(req: Request) {
       const data = pickAllowed(body.payload);
       const { error } = await service.from("vocabulary_library").insert(data);
       if (error) {
-        // 23505 = unique violation. The DB has UNIQUE (word, reading)
-        // (constraint: vocab_word_reading_unique) — surface a friendly
-        // VN message instead of the raw Postgres text so the admin
-        // knows to use Edit on the existing row.
+        // 23505 = unique violation. The DB has UNIQUE (word)
+        // (constraint: vocabulary_library_word_unique) — surface a
+        // friendly VN message instead of the raw Postgres text so the
+        // admin knows to use Edit on the existing row.
         if ((error as { code?: string }).code === "23505") {
           const w = String(data.word ?? "").trim();
           const r = String(data.reading ?? "").trim();
@@ -220,12 +220,17 @@ export async function POST(req: Request) {
       if (!Array.isArray(body.rows) || body.rows.length === 0) {
         return NextResponse.json({ error: "rows required" }, { status: 400 });
       }
+      console.log("[bulk_upsert] incoming rows:", body.rows.length, "first row:", JSON.stringify(body.rows[0]));
       const cleaned = body.rows.map(pickAllowed);
-      // onConflict matches the DB's UNIQUE (word, reading) constraint
-      // so a CSV re-upload with the same (word, reading) updates the
-      // existing row instead of erroring on vocab_word_reading_unique.
-      const { error } = await service.from("vocabulary_library").upsert(cleaned, { onConflict: "word,reading" });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      console.log("[bulk_upsert] cleaned first row:", JSON.stringify(cleaned[0]));
+      // onConflict matches the DB's UNIQUE (word) constraint
+      // (vocabulary_library_word_unique) so a re-upload with the same
+      // `word` updates the existing row instead of 23505-erroring.
+      const { error } = await service.from("vocabulary_library").upsert(cleaned, { onConflict: "word" });
+      if (error) {
+        console.log("[bulk_upsert] upsert error:", JSON.stringify(error));
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
       // Auto-apply pending examples for all words in this batch
       const words = cleaned.map((r) => String(r.word ?? "").trim()).filter(Boolean);
       const autoApplied = await applyPendingExamples(service, words, "vocab");
