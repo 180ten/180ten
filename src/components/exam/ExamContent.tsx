@@ -20,6 +20,7 @@ import {
   type AudioScriptLine,
 } from "@/lib/audioScript";
 import { sb } from "@/lib/supabase";
+import ExamAudioPlayer from "@/components/exam/ExamAudioPlayer";
 
 const NUMS = ["1", "2", "3", "4"];
 
@@ -1398,23 +1399,11 @@ function ListeningContent({
     const safeSrc = encodeAudioUrl(audioUrl);
     console.log("[listen] rendering audio bar", { rawAudioUrl: audioUrl, safeSrc });
     elems.push(
-      <div
-        key="audio-bar"
-        className="audio-bar"
-        onClick={(e) => console.log("[listen] audio-bar div clicked", { target: (e.target as HTMLElement).tagName })}
-      >
-        <audio
-          ref={examAudioRef}
-          key={safeSrc}
-          controls
-          src={safeSrc}
-          id="listen-audio"
-          onPlay={() => console.log("[listen] audio PLAY event")}
-          onPause={() => console.log("[listen] audio PAUSE event")}
-          onLoadStart={() => console.log("[listen] audio loadstart")}
-          onClick={() => console.log("[listen] <audio> element clicked directly")}
-        />
-      </div>
+      <ExamAudioPlayer
+        key={`eap-${safeSrc}`}
+        src={safeSrc}
+        audioRef={examAudioRef}
+      />
     );
   } else {
     console.warn("[listen] no audioUrl — listening section will render without audio bar");

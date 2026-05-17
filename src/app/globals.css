@@ -333,8 +333,19 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
   background-position:center center,center center;
   background-size:cover,cover;
 }
-.audio-bar{background:var(--text);color:#fff;padding:10px 14px;border-radius:var(--r);margin-bottom:16px;}
-.audio-bar audio{display:block;width:100%;height:40px;accent-color:var(--accent);}
+/* Custom exam audio player — replaces native <audio controls> so the
+   browser's overflow menu (with its download item) is never exposed.
+   Wrapper carries the same dark-on-light card look the old .audio-bar
+   had; an inner hidden <audio> element is driven by examAudioRef so
+   all existing seek/timeupdate consumers keep working unchanged. */
+.exam-audio-player{display:flex;align-items:center;gap:10px;background:var(--text);color:#fff;padding:10px 14px;border-radius:var(--r);margin-bottom:16px;}
+.eap-play-btn{flex-shrink:0;width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,0.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.eap-play-btn:hover{background:rgba(255,255,255,0.28);}
+.eap-time{flex-shrink:0;font-size:12px;font-variant-numeric:tabular-nums;opacity:0.85;min-width:36px;}
+.eap-dur{opacity:0.6;}
+.eap-seek{flex:1;height:4px;accent-color:var(--accent);cursor:pointer;}
+.eap-speed{flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:3px 6px;font-size:12px;cursor:pointer;}
+.eap-speed:focus{outline:none;}
 .section-header{font-size:13px;font-weight:800;color:var(--text);letter-spacing:.04em;margin:8px 0 12px;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:14px;padding:9px 14px;box-shadow:0 2px 8px rgba(0,0,0,.03);}
 .q-block{--q-pad-x:22px;--q-pad-y:20px;position:relative;background:var(--white);border:1px solid #dedbd3;border-radius:18px;padding:var(--q-pad-y) var(--q-pad-x);margin-bottom:8px;color:#1a1917;box-shadow:0 8px 26px rgba(32,28,22,.045);transition:box-shadow .15s,border-color .15s,transform .15s;container-type:inline-size;}
 .q-block:hover{border-color:#d4d0c6;box-shadow:0 12px 34px rgba(32,28,22,.07);}
@@ -476,8 +487,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(247,246,243,.92);backdrop-
   .toolbar-doing{gap:8px;}
   .exam-body{grid-template-columns:minmax(0,1fr) var(--exam-sidebar-w);}
   .exam-content{padding:10px clamp(10px,2vw,24px) 18px;scroll-padding-top:6px;}
-  .audio-bar{padding:8px 10px;margin-bottom:10px;}
-  .audio-bar audio{height:36px;}
+  .exam-audio-player{padding:8px 10px;gap:8px;margin-bottom:10px;}
   .section-header{font-size:12px;margin:6px 0 10px;padding:9px 14px;border-radius:12px;}
   .passage-split{gap:12px;margin-bottom:10px;}
   .passage-split-left,.passage-split-right{gap:10px;}
