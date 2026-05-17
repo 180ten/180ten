@@ -11,7 +11,6 @@ interface VocabEntry {
   word_type?: string;
   meaning: string;
   meaning_jp?: string;
-  jlpt_level?: string;
   examples?: string[];
   /** Optional inflection / variant forms — looked up by the in-exam
    *  vocab popup so 「飲んで」 in a passage maps back to the canonical
@@ -253,8 +252,7 @@ export default function VocabTab() {
   const [loading, setLoading]           = useState(false);
   const [query, setQuery]               = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [levelFilter, setLevelFilter]   = useState("");
-  const [dbStats, setDbStats]           = useState<{ total: number; n5: number; n4: number; n3up: number } | null>(null);
+  const [dbStats, setDbStats]           = useState<{ total: number } | null>(null);
   const [editEntry, setEditEntry]       = useState<EditingEntry | null>(null);
   const [editOpen, setEditOpen]         = useState(false);
   const [editingId, setEditingId]       = useState<string | number | null>(null);
@@ -285,18 +283,8 @@ export default function VocabTab() {
 
   // Đếm trực tiếp từ DB — không phụ thuộc vào dữ liệu đã tải về
   const loadStats = useCallback(async () => {
-    const [resTotal, resN5, resN4, resN3up] = await Promise.all([
-      sb.from("vocabulary_library").select("*", { count: "exact", head: true }),
-      sb.from("vocabulary_library").select("*", { count: "exact", head: true }).eq("jlpt_level", "N5"),
-      sb.from("vocabulary_library").select("*", { count: "exact", head: true }).eq("jlpt_level", "N4"),
-      sb.from("vocabulary_library").select("*", { count: "exact", head: true }).in("jlpt_level", ["N3","N2","N1"]),
-    ]);
-    setDbStats({
-      total: resTotal.count  ?? 0,
-      n5:    resN5.count     ?? 0,
-      n4:    resN4.count     ?? 0,
-      n3up:  resN3up.count   ?? 0,
-    });
+    const resTotal = await sb.from("vocabulary_library").select("*", { count: "exact", head: true });
+    setDbStats({ total: resTotal.count ?? 0 });
   }, []);
 
   // Parse client-side để hiện preview trước khi submit.
@@ -352,12 +340,11 @@ export default function VocabTab() {
     setLoading(true);
     let qb = sb
       .from("vocabulary_library")
-      .select("id,word,reading,han_viet,word_type,meaning,meaning_jp,jlpt_level,variants", { count: "exact" })
+      .select("id,word,reading,han_viet,word_type,meaning,meaning_jp,variants", { count: "exact" })
       .order("created_at", { ascending: false })
       .order("id", { ascending: true })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
-    if (levelFilter) qb = qb.eq("jlpt_level", levelFilter);
     const safeQuery = escapeIlike(debouncedQuery);
     if (safeQuery) {
       // PostgREST .or() syntax: column.op.value, comma-separated.
@@ -379,7 +366,7 @@ export default function VocabTab() {
     setRows((data ?? []) as VocabEntry[]);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [page, levelFilter, debouncedQuery]);
+  }, [page, debouncedQuery]);
 
   // Debounce the search input — only fire the server query 300ms after
   // the user stops typing.
@@ -392,7 +379,7 @@ export default function VocabTab() {
   // on page 5 of an old result set with no rows in the new one).
   useEffect(() => {
     setPage(0);
-  }, [debouncedQuery, levelFilter]);
+  }, [debouncedQuery]);
 
   // Initial load + every page/filter change.
   useEffect(() => { void loadPage(); }, [loadPage]);
@@ -400,13 +387,11 @@ export default function VocabTab() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const lvlColor: Record<string, string> = { N5:"#9B59B6",N4:"#3498db",N3:"#2ecc71",N2:"#e67e22",N1:"#e74c3c" };
-
   async function openVocabForm(vocab?: VocabEntry) {
     setEditErr("");
     if (!vocab) {
       setEditingId(null);
-      setEditEntry({ word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", jlpt_level: "", examples: [""], variants: [] });
+      setEditEntry({ word: "", reading: "", han_viet: "", word_type: "", meaning: "", meaning_jp: "", examples: [""], variants: [] });
       setEditOpen(true);
       return;
     }
@@ -448,7 +433,6 @@ export default function VocabTab() {
       meaning_jp: editEntry.meaning_jp?.trim() || null as unknown as string,
       han_viet:   editEntry.han_viet?.trim() || null as unknown as string,
       word_type:  editEntry.word_type || null as unknown as string,
-      jlpt_level: editEntry.jlpt_level || null as unknown as string,
       examples:   (editEntry.examples ?? []).filter(Boolean),
       variants:   (editEntry.variants ?? []).filter(Boolean),
     };
@@ -544,13 +528,11 @@ export default function VocabTab() {
       const dataRows = rows.slice(startIdx)
         .filter((r) => String(r[0] || "").trim())
         .map((r) => {
-          // Column G is the new jlpt_level slot (added 2026-05). For
-          // forward-compat with files exported by the new template we
-          // expect "N1".."N5" there; for files from the OLD template
-          // (where G was just the first example), fall back to
-          // treating G+ as examples and default the level to "N5".
-          const rawLevel = String(r[6] || "").trim().toUpperCase();
-          const hasLevel = ["N1", "N2", "N3", "N4", "N5"].includes(rawLevel);
+          // Tolerate files exported when col G held jlpt_level: if G
+          // looks like "N1".."N5" we skip it and start examples at H.
+          // Otherwise G+ are examples (current layout).
+          const rawG = String(r[6] || "").trim().toUpperCase();
+          const gIsLevel = ["N1", "N2", "N3", "N4", "N5"].includes(rawG);
           return {
             word:        String(r[0] || "").trim(),
             reading:     String(r[1] || "").trim(),
@@ -558,8 +540,7 @@ export default function VocabTab() {
             word_type:   String(r[3] || "").trim() || null,
             meaning:     String(r[4] || "").trim(),
             meaning_jp:  String(r[5] || "").trim() || null,
-            jlpt_level:  hasLevel ? rawLevel : "N5",
-            examples:   (hasLevel ? r.slice(7) : r.slice(6))
+            examples:   (gIsLevel ? r.slice(7) : r.slice(6))
                           .map((c) => String(c).trim()).filter(Boolean),
           };
         })
@@ -597,9 +578,9 @@ export default function VocabTab() {
   async function downloadTemplate() {
     const _xl = await import("xlsx"); const XLSX = (_xl.default ?? _xl) as typeof _xl;
     const ws = XLSX.utils.aoa_to_sheet([
-      ["Từ vựng","Cách đọc (Hiragana)","Âm Hán Việt","Từ loại","Nghĩa tiếng Việt","Nghĩa tiếng Nhật","Cấp độ (N1-N5)","Ví dụ 1","Ví dụ 2","Ví dụ 3"],
-      ["学校","がっこう","Học Hiệu","Danh từ","trường học","① 学校 ② 学びの場所","N5","学校に行く → Đi đến trường","学校が好きです → Tôi thích trường học",""],
-      ["行く","いく","","Động từ","đi","① 行く ② 向かう","N5","学校に行く → Đi đến trường","",""],
+      ["Từ vựng","Cách đọc (Hiragana)","Âm Hán Việt","Từ loại","Nghĩa tiếng Việt","Nghĩa tiếng Nhật","Ví dụ 1","Ví dụ 2","Ví dụ 3"],
+      ["学校","がっこう","Học Hiệu","Danh từ","trường học","① 学校 ② 学びの場所","学校に行く → Đi đến trường","学校が好きです → Tôi thích trường học",""],
+      ["行く","いく","","Động từ","đi","① 行く ② 向かう","学校に行く → Đi đến trường","",""],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Từ vựng");
@@ -691,9 +672,6 @@ export default function VocabTab() {
 
       <div className="stats-row">
         <div className="stat-card"><div className="n" id="vs-total">{dbStats ? dbStats.total : "—"}</div><div className="l">Tổng từ vựng</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#9B59B6" }} id="vs-n5">{dbStats ? dbStats.n5 : "—"}</div><div className="l">N5</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#3498db" }} id="vs-n4">{dbStats ? dbStats.n4 : "—"}</div><div className="l">N4</div></div>
-        <div className="stat-card"><div className="n" style={{ color: "#2ecc71" }} id="vs-n3">{dbStats ? dbStats.n3up : "—"}</div><div className="l">N3 trở lên</div></div>
       </div>
 
       <div style={{ margin: "0 22px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -702,14 +680,8 @@ export default function VocabTab() {
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: 240 }}
         />
-        <select id="vocab-level-filter" value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value)}
-          style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid #2a2a2a", background: "#0f0f0f", color: "#e8e8e8", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 12 }}>
-          <option value="">Tất cả cấp độ</option>
-          {["N5","N4","N3","N2","N1"].map((l) => <option key={l} value={l}>{l}</option>)}
-        </select>
         <span style={{ fontSize: 11, color: "#555" }}>
-          {loading ? "Đang tải..." : `${total.toLocaleString()} từ${(debouncedQuery || levelFilter) ? " (đã lọc)" : ""}`}
+          {loading ? "Đang tải..." : `${total.toLocaleString()} từ${debouncedQuery ? " (đã lọc)" : ""}`}
         </span>
       </div>
 
@@ -744,15 +716,14 @@ export default function VocabTab() {
               />
             </th>
             <th>Từ vựng</th><th>Cách đọc</th><th>Âm Hán Việt</th><th>Từ loại</th>
-            <th>Nghĩa VI</th><th>Nghĩa JP</th><th>Cấp độ</th><th>Thao tác</th>
+            <th>Nghĩa VI</th><th>Nghĩa JP</th><th>Thao tác</th>
           </tr></thead>
           <tbody id="vocab-tbody">
-            {loading && <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#444" }}>Đang tải...</td></tr>}
+            {loading && <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#444" }}>Đang tải...</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#444" }}>Chưa có từ vựng nào.</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#444" }}>Chưa có từ vựng nào.</td></tr>
             )}
             {!loading && rows.map((v) => {
-              const lc = lvlColor[v.jlpt_level || ""] || "#555";
               const idKey = v.id != null ? String(v.id) : "";
               const checked = !!idKey && selectedIds.has(idKey);
               return (
@@ -772,11 +743,6 @@ export default function VocabTab() {
                   <td style={{ fontSize: 11, color: "#555" }}>{v.word_type || "—"}</td>
                   <td>{v.meaning || "—"}</td>
                   <td style={{ color: "#d0cfc8" }}>{v.meaning_jp || "—"}</td>
-                  <td>
-                    <span style={{ padding: "2px 8px", borderRadius: 99, fontSize: 10, fontWeight: 700, background: lc + "18", color: lc }}>
-                      {v.jlpt_level || "—"}
-                    </span>
-                  </td>
                   <td>
                     <button type="button" className="act-btn" onClick={() => void openVocabForm(v)}>✎ Sửa</button>
                     <button type="button" className="act-btn danger" onClick={() => void deleteVocab(v.id!, v.word)}>Xóa</button>
@@ -849,13 +815,6 @@ export default function VocabTab() {
                 <label style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 5 }}>Nghĩa tiếng Nhật</label>
                 <input value={editEntry.meaning_jp ?? ""} onChange={(e) => setEditEntry((p) => p ? { ...p, meaning_jp: e.target.value } : p)} placeholder="① 学校 ② 学びの場所" style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #2a2a2a", background: "#0f0f0f", color: "#e8e8e8", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 13, outline: "none" }} />
               </div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 5 }}>Cấp độ</label>
-              <select value={editEntry.jlpt_level ?? ""} onChange={(e) => setEditEntry((p) => p ? { ...p, jlpt_level: e.target.value } : p)} style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid #2a2a2a", background: "#0f0f0f", color: "#e8e8e8", fontFamily: "Be Vietnam Pro,Noto Sans JP,sans-serif", fontSize: 13, outline: "none" }}>
-                <option value="">—</option>
-                {["N5","N4","N3","N2","N1"].map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
             </div>
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
