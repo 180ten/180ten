@@ -543,19 +543,28 @@ export default function VocabTab() {
       const startIdx = (firstCell === "Từ vựng" || firstCell === "Word") ? 1 : 0;
       const dataRows = rows.slice(startIdx)
         .filter((r) => String(r[0] || "").trim())
-        .map((r) => ({
-          word:       String(r[0] || "").trim(),
-          reading:    String(r[1] || "").trim(),
-          han_viet:   String(r[2] || "").trim() || null,
-          word_type:  String(r[3] || "").trim() || null,
-          meaning:    String(r[4] || "").trim(),
-          meaning_jp: String(r[5] || "").trim() || null,
-          examples:   r.slice(6).map((c) => String(c).trim()).filter(Boolean),
-        }))
+        .map((r) => {
+          // Column G is the new jlpt_level slot (added 2026-05). For
+          // forward-compat with files exported by the new template we
+          // expect "N1".."N5" there; for files from the OLD template
+          // (where G was just the first example), fall back to
+          // treating G+ as examples and default the level to "N5".
+          const rawLevel = String(r[6] || "").trim().toUpperCase();
+          const hasLevel = ["N1", "N2", "N3", "N4", "N5"].includes(rawLevel);
+          return {
+            word:        String(r[0] || "").trim(),
+            reading:     String(r[1] || "").trim(),
+            han_viet:    String(r[2] || "").trim() || null,
+            word_type:   String(r[3] || "").trim() || null,
+            meaning:     String(r[4] || "").trim(),
+            meaning_jp:  String(r[5] || "").trim() || null,
+            jlpt_level:  hasLevel ? rawLevel : "N5",
+            examples:   (hasLevel ? r.slice(7) : r.slice(6))
+                          .map((c) => String(c).trim()).filter(Boolean),
+          };
+        })
         .filter((r) => r.word && r.meaning);
       if (!dataRows.length) { showToast("File không có dữ liệu hợp lệ.", "error"); return; }
-      // Diagnostic: log first 5 word_type values parsed from Excel
-      console.log("[Import] word_type samples:", dataRows.slice(0, 5).map((r) => r.word_type));
       showToast("Đang cập nhật thư viện...");
       let done = 0;
       for (let i = 0; i < dataRows.length; i += 50) {
@@ -578,9 +587,9 @@ export default function VocabTab() {
   async function downloadTemplate() {
     const _xl = await import("xlsx"); const XLSX = (_xl.default ?? _xl) as typeof _xl;
     const ws = XLSX.utils.aoa_to_sheet([
-      ["Từ vựng","Cách đọc (Hiragana)","Âm Hán Việt","Từ loại","Nghĩa tiếng Việt","Nghĩa tiếng Nhật","Ví dụ 1","Ví dụ 2","Ví dụ 3"],
-      ["学校","がっこう","Học Hiệu","Danh từ","trường học","① 学校 ② 学びの場所","学校に行く → Đi đến trường","学校が好きです → Tôi thích trường học",""],
-      ["行く","いく","","Động từ","đi","① 行く ② 向かう","学校に行く → Đi đến trường","",""],
+      ["Từ vựng","Cách đọc (Hiragana)","Âm Hán Việt","Từ loại","Nghĩa tiếng Việt","Nghĩa tiếng Nhật","Cấp độ (N1-N5)","Ví dụ 1","Ví dụ 2","Ví dụ 3"],
+      ["学校","がっこう","Học Hiệu","Danh từ","trường học","① 学校 ② 学びの場所","N5","学校に行く → Đi đến trường","学校が好きです → Tôi thích trường học",""],
+      ["行く","いく","","Động từ","đi","① 行く ② 向かう","N5","学校に行く → Đi đến trường","",""],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Từ vựng");
