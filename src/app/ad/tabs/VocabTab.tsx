@@ -586,7 +586,7 @@ export default function VocabTab() {
         }
         done += Math.min(50, dedupedRows.length - i);
       }
-      showToast(`Đã import ${done} từ vựng ✓`, "success");
+      showToast(`✅ Import xong ${done} từ (từ trùng đã được cập nhật).`, "success");
       void loadPage(); void loadStats();
     } catch (err: unknown) {
       showToast("Lỗi đọc file: " + (err as Error).message, "error");

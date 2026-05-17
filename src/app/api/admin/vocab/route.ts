@@ -234,12 +234,24 @@ export async function POST(req: Request) {
       // onConflict matches the DB's UNIQUE (word) constraint
       // (vocabulary_library_word_unique) so a re-upload with the same
       // `word` updates the existing row instead of 23505-erroring.
-      const { error } = await service.from("vocabulary_library").upsert(deduped, { onConflict: "word" });
+      // ignoreDuplicates:false is the supabase-js default but pinned
+      // here so a future refactor can't silently flip the semantics
+      // from "overwrite" to "skip".
+      const { error } = await service.from("vocabulary_library").upsert(deduped, {
+        onConflict: "word",
+        ignoreDuplicates: false,
+      });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       // Auto-apply pending examples for all words in this batch
       const words = deduped.map((r) => String(r.word ?? "").trim()).filter(Boolean);
       const autoApplied = await applyPendingExamples(service, words, "vocab");
-      return NextResponse.json({ ok: true, count: deduped.length, autoApplied });
+      return NextResponse.json({
+        ok: true,
+        upserted: deduped.length,
+        count: deduped.length,
+        autoApplied,
+        message: `${deduped.length} từ đã được import/cập nhật`,
+      });
     }
 
     if (body.action === "attach_examples") {
