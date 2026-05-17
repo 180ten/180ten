@@ -25,9 +25,14 @@ const VOCAB_TAG_RE = /〖([^〗]+)〗/g;
 //
 // Anything else falls through unchanged.
 function extractWordFromTag(inner: string): string {
-  // 1) Furigana form  {(漢字)(かな)}
-  const fur = inner.match(/^\{\(([^)]+)\)\([^)]+\)\}$/);
-  if (fur) return fur[1];
+  // 1) Strip every {(kanji)(kana)} furigana atom → kanji only.
+  //    Handles single atom, prefix/suffix, multi-atom:
+  //    {(醍醐味)(だいごみ)}        → 醍醐味
+  //    {(喋)(しゃべ)}れる          → 喋れる
+  //    お{(喋)(しゃべ)}り          → お喋り
+  //    {(召)(め)}し{(上)(あ)}がる  → 召し上がる
+  const stripped = inner.replace(/\{\(([^)]+)\)\([^)]+\)\}/g, "$1");
+  if (stripped !== inner) return stripped;
 
   // 2) Half-width parens (...)
   const par = inner.match(/^\(([^)]+)\)$/);
