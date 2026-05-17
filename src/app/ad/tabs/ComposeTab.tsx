@@ -592,6 +592,24 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
             setSize(input?.value || "14");
           }} style={{ padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 11, cursor: "pointer", fontWeight: 700 }}>A</button>
         </label>
+        {/* Color picker — the native <input type="color"> is visually
+            hidden inside the label; clicking the "A" label opens the
+            OS colour picker and wraps the current selection in
+            [color=#xxxxxx]…[/color]. rememberSelection runs first
+            because opening the picker steals focus. */}
+        <label
+          title="Màu chữ"
+          onPointerDown={() => rememberSelection()}
+          style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "2px 7px", borderRadius: 4, border: `1px solid ${C.border2}`, background: "transparent", color: "#e53e3e", fontSize: 11, fontWeight: 700, cursor: "pointer", marginLeft: 2 }}
+        >
+          A
+          <input
+            type="color"
+            defaultValue="#e53e3e"
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: "none", padding: 0 }}
+            onChange={(e) => insert(`[color=${e.target.value}]`, "[/color]")}
+          />
+        </label>
       </div>
       <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         rows={rows}
@@ -844,7 +862,7 @@ function ExplainFields({ data, onChange, qKey }: {
 }) {
   return (
     <>
-      <Fl label="Giải thích"><Ta value={String(data.explanation||"")} onChange={v => onChange("explanation",v)} placeholder="Giải thích đáp án..." rows={2} /></Fl>
+      <Fl label="Giải thích"><RichTa value={String(data.explanation||"")} onChange={v => onChange("explanation",v)} placeholder="Giải thích đáp án..." rows={3} /></Fl>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Fl label="Từ vựng (tìm & chọn từ thư viện)">
           <VocabInput key={"v_"+(qKey||"new")} value={String(data.vocab||"")} onChange={v => onChange("vocab",v)} />
@@ -1029,7 +1047,7 @@ function VocabForm({ data, onChange, renderQ, typeId, level }: {
           <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>Preview</div>
           <div style={{ fontSize: 14, lineHeight: 1.8, marginBottom: 12 }}>{renderQ(String(data.question||""))}</div>
           <PreviewChoices correct={String(data.correct||"")} wrongs={(data.wrongs as string[])||["","",""]} />
-          {data.explanation ? <div style={{ marginTop: 10, padding: "9px 12px", background: C.surface, borderRadius: 8, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{String(data.explanation as string)}</div> : null}
+          {data.explanation ? <div style={{ marginTop: 10, padding: "9px 12px", background: C.surface, borderRadius: 8, fontSize: 12, color: C.muted, lineHeight: 1.6, whiteSpace: "pre-wrap" }} dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(String(data.explanation || "")) }} /> : null}
         </div>
       </div>
     </div>

@@ -604,7 +604,9 @@ function ExplainPanel({
           <div className="explain-body">
             {tab === 0 && (
               expl
-                ? <div style={{ whiteSpace: "pre-wrap" }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(expl) }} />
+                ? <div style={{ whiteSpace: "pre-wrap" }}>
+                    <VocabSegments text={expl} renderText={sanitizedRenderRichInline} />
+                  </div>
                 : <span className="explain-empty">Chưa có nội dung.</span>
             )}
             {tab === 1 && (

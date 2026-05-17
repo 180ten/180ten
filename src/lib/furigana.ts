@@ -25,6 +25,25 @@ export function renderRichInline(src: string): string {
   let out = '';
   let i = 0;
   while (i < src.length) {
+    // [color=…]…[/color] — hex (#abc / #abcdef / #abcdef88),
+    // rgb(r,g,b), or a named colour. Anything that fails the
+    // allow-pattern falls back to inherit so a malformed admin entry
+    // can never inject arbitrary CSS via the style attribute.
+    const colorMatch = src.slice(i).match(/^\[color=([^\]]{1,32})\]/);
+    if (colorMatch) {
+      const close = '[/color]';
+      const start = i + colorMatch[0].length;
+      const end = src.indexOf(close, start);
+      if (end >= 0) {
+        const raw = colorMatch[1].trim();
+        const safe = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|[a-zA-Z]{2,20})$/.test(raw)
+          ? raw : 'inherit';
+        out += `<span style="color:${safe};">${renderRichInline(src.slice(start, end))}</span>`;
+        i = end + close.length;
+        continue;
+      }
+    }
+
     const sizeMatch = src.slice(i).match(/^\[size=(\d{1,2})\]/);
     if (sizeMatch) {
       const close = '[/size]';
@@ -77,7 +96,7 @@ export function renderRichInline(src: string): string {
     }
 
     let next = src.length;
-    for (const marker of ['[size=', ...richPairTags.map((x) => x.open), '**', '__', '*']) {
+    for (const marker of ['[color=', '[size=', ...richPairTags.map((x) => x.open), '**', '__', '*']) {
       const at = src.indexOf(marker, i + 1);
       if (at >= 0 && at < next) next = at;
     }
