@@ -2674,6 +2674,11 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
   const [loadingExam, setLoadingExam]   = useState(false);
   const excelRef = useRef<HTMLInputElement>(null);
   const questionListScrollRef = useRef<HTMLDivElement>(null);
+  // Mondai-level script bulk import. Picker remembers which group the
+  // admin is targeting; the hidden file input is fired by the Import
+  // button once a group is selected.
+  const [selectedMondaiForScript, setSelectedMondaiForScript] = useState<string>("");
+  const mondaiScriptInputRef = useRef<HTMLInputElement>(null);
 
   const handleQuestionListDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     const el = questionListScrollRef.current;
@@ -2975,6 +2980,120 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
     } finally {
       setLearningAll(false);
     }
+  };
+
+  // ── Mondai script bulk import ────────────────────────────────────
+  // One workbook per mondai, one sheet per question (in the order the
+  // questions appear inside the group). Each sheet has the same
+  // A=Start, B=End, C=Nội dung layout the per-question importer reads
+  // ([AudioScriptEditor.handleImportScript] above), so admins moving
+  // between the two paths see consistent columns.
+
+  const getMondaiQuestions = (groupId: string): ComposeQuestion[] => {
+    const group = mondaiGroups.find(g => g.id === groupId);
+    if (!group) return [];
+    return group.questionIds
+      .map(id => questions.find(q => q.id === id))
+      .filter(Boolean) as ComposeQuestion[];
+  };
+
+  const handleDownloadMondaiScriptTemplate = async (groupId: string) => {
+    const qs = getMondaiQuestions(groupId);
+    if (!qs.length) return;
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+    qs.forEach((q, i) => {
+      const sheetName = `Q${i + 1}`;
+      // Pre-fill from the question's existing script when present so
+      // admins can iterate (download → edit in Excel → re-upload).
+      const existing: AudioScriptLine[] = parseScriptLines(
+        typeof q.audioScript === "string" ? q.audioScript : null,
+      );
+      const rows: (string | number)[][] = [["Start", "End", "Nội dung"]];
+      if (existing.length > 0) {
+        existing.forEach(l => rows.push([l.start ?? "", l.end ?? "", l.text ?? ""]));
+      } else {
+        rows.push(["00:00", "00:05", ""], ["00:05", "00:10", ""], ["00:10", "00:15", ""]);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [{ wch: 10 }, { wch: 10 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    const group = mondaiGroups.find(g => g.id === groupId);
+    const safeName = (group?.label ?? groupId).replace(/[\\/:*?"<>|]/g, "_");
+    XLSX.writeFile(wb, `script_${safeName}.xlsx`);
+  };
+
+  const handleImportMondaiScript = async (groupId: string, file: File) => {
+    const qs = getMondaiQuestions(groupId);
+    if (!qs.length) return;
+    const XLSX = await loadXLSX();
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+
+    // Map sheet index → question (sheet order = question order in group).
+    // Extra sheets are ignored; missing sheets leave the question's
+    // current script untouched.
+    const updates: { id: string; audioScript: string }[] = [];
+    wb.SheetNames.forEach((sheetName, i) => {
+      const q = qs[i];
+      if (!q) return;
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+
+      // Drop a leading header row when the first cell is a known
+      // label (Start / Bắt đầu / Begin). Case-insensitive.
+      const HEADER_FIRST_CELLS = new Set(["start", "bắt đầu", "begin"]);
+      const dataRows = rows.filter((row, idx) => {
+        if (idx === 0) {
+          const first = String((row as unknown[])[0] ?? "").trim().toLowerCase();
+          return !HEADER_FIRST_CELLS.has(first);
+        }
+        return true;
+      });
+
+      const lines: AudioScriptLine[] = dataRows
+        .filter(row => (row as unknown[]).some(c => c != null && String(c).trim() !== ""))
+        .map(row => {
+          const r = row as unknown[];
+          const start = String(r[0] ?? "").trim();
+          const end   = String(r[1] ?? "").trim();
+          const text  = String(r[2] ?? "").trim();
+          // Empty content → spacer row, matching per-question importer.
+          return { start, end, text: text === "" ? "[SPACE]" : text };
+        });
+
+      if (lines.length > 0) {
+        updates.push({ id: q.id, audioScript: JSON.stringify(lines) });
+      }
+    });
+
+    if (!updates.length) {
+      alert("Không tìm thấy dữ liệu hợp lệ trong file.");
+      return;
+    }
+
+    // Patch the canonical questions array. Don't touch any field
+    // other than audioScript so the rest of the question is intact.
+    setQuestions(prev => prev.map(q => {
+      const upd = updates.find(u => u.id === q.id);
+      return upd ? { ...q, audioScript: upd.audioScript } : q;
+    }));
+
+    // If one of the patched questions is currently in the form, sync
+    // the live form copy so the editor reflects the import instead of
+    // silently overwriting on the next save.
+    if (editingId) {
+      const upd = updates.find(u => u.id === editingId);
+      if (upd) {
+        setFormData(prev => ({
+          ...prev,
+          [activeId]: { ...(prev[activeId] ?? {}), audioScript: upd.audioScript },
+        }));
+      }
+    }
+
+    alert(`✅ Đã import script cho ${updates.length}/${qs.length} câu trong mondai.`);
   };
 
   const handleImportComposeExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3335,6 +3454,52 @@ export default function ComposeTab({ showToast }: { showToast: (msg: string, typ
               <input ref={excelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleImportComposeExcel} />
               <button type="button" onClick={() => excelRef.current?.click()} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${grpColor}66`, background: grpColor+"18", color: grpColor, fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Import Excel cho mondai hiện tại">📥 Import Excel</button>
               <button type="button" onClick={handleDownloadComposeTemplate} style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: "transparent", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Tải template Excel cho mondai hiện tại">⬇ Template Excel</button>
+              {/* Mondai-level script bulk import — only meaningful when
+                  the admin is on a listen tab AND has built at least
+                  one mondai group containing listen questions. */}
+              {activeId.startsWith("listen_") && mondaiGroups.some(g =>
+                g.questionIds.some(id => questions.find(q => q.id === id)?.type?.startsWith("listen_"))
+              ) && (
+                <>
+                  <select
+                    value={selectedMondaiForScript}
+                    onChange={e => setSelectedMondaiForScript(e.target.value)}
+                    style={{ padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: C.panel, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                    title="Chọn mondai để import/template script hàng loạt"
+                  >
+                    <option value="">— Chọn mondai —</option>
+                    {mondaiGroups
+                      .filter(g => g.questionIds.some(id => questions.find(q => q.id === id)?.type?.startsWith("listen_")))
+                      .map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedMondaiForScript}
+                    onClick={() => { if (selectedMondaiForScript) void handleDownloadMondaiScriptTemplate(selectedMondaiForScript); }}
+                    style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${C.border2}`, background: "transparent", color: selectedMondaiForScript ? C.muted : C.muted2, fontSize: 12, fontWeight: 700, cursor: selectedMondaiForScript ? "pointer" : "not-allowed", opacity: selectedMondaiForScript ? 1 : 0.6 }}
+                    title="Tải template Excel script (1 sheet/câu) cho mondai đã chọn"
+                  >⬇ Template script</button>
+                  <button
+                    type="button"
+                    disabled={!selectedMondaiForScript}
+                    onClick={() => mondaiScriptInputRef.current?.click()}
+                    style={{ padding: "7px 12px", borderRadius: 7, border: `1.5px solid ${grpColor}66`, background: grpColor+"18", color: grpColor, fontSize: 12, fontWeight: 700, cursor: selectedMondaiForScript ? "pointer" : "not-allowed", opacity: selectedMondaiForScript ? 1 : 0.6 }}
+                    title="Import script từ Excel cho cả mondai (1 sheet/câu)"
+                  >📥 Import script</button>
+                  <input
+                    ref={mondaiScriptInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    style={{ display: "none" }}
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file || !selectedMondaiForScript) return;
+                      e.target.value = "";
+                      await handleImportMondaiScript(selectedMondaiForScript, file);
+                    }}
+                  />
+                </>
+              )}
               {editingId && <button type="button" onClick={() => {
                 if (!confirmDiscard()) return;
                 setEditingId(null);
