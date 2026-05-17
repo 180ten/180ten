@@ -1349,7 +1349,9 @@ function ListenAudioAndScript({
                     // seeks the audio. Same dangerouslySetInnerHTML
                     // path as before — 〖〗 / 〔〕 render as literal
                     // text in this mode.
-                    const html = sanitizedRenderRichInline(applyScriptInlineMarkup(line.text));
+                    const html = sanitizedRenderRichInline(
+                      stripGrammarTags(stripVocabTags(applyScriptInlineMarkup(line.text)))
+                    );
                     return (
                       <div
                         key={idx}
