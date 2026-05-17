@@ -565,16 +565,26 @@ export default function VocabTab() {
         })
         .filter((r) => r.word && r.meaning);
       if (!dataRows.length) { showToast("File không có dữ liệu hợp lệ.", "error"); return; }
+      // Dedup by `word` — Postgres' ON CONFLICT DO UPDATE can't touch
+      // the same row twice in one statement, so duplicate words in a
+      // single Excel would blow up the whole batch. Last occurrence
+      // wins, matching the intuition that a later row overrides.
+      const dedupedRows = Array.from(
+        dataRows.reduce((map, row) => {
+          map.set(row.word, row);
+          return map;
+        }, new Map<string, typeof dataRows[0]>()).values()
+      );
       showToast("Đang cập nhật thư viện...");
       let done = 0;
-      for (let i = 0; i < dataRows.length; i += 50) {
+      for (let i = 0; i < dedupedRows.length; i += 50) {
         try {
-          await adminCall("/api/admin/vocab", { action: "bulk_upsert", rows: dataRows.slice(i, i + 50) });
+          await adminCall("/api/admin/vocab", { action: "bulk_upsert", rows: dedupedRows.slice(i, i + 50) });
         } catch (err) {
           showToast("Lỗi import: " + (err instanceof AdminApiError ? err.message : "không rõ"), "error");
           return;
         }
-        done += Math.min(50, dataRows.length - i);
+        done += Math.min(50, dedupedRows.length - i);
       }
       showToast(`Đã import ${done} từ vựng ✓`, "success");
       void loadPage(); void loadStats();

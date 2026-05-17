@@ -221,15 +221,25 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "rows required" }, { status: 400 });
       }
       const cleaned = body.rows.map(pickAllowed);
+      // Server-side dedup defends against duplicate `word` entries in
+      // a single batch — Postgres' ON CONFLICT DO UPDATE can't touch
+      // the same row twice in one statement ("cannot affect row a
+      // second time"). Last occurrence wins, mirroring the client.
+      const deduped = Array.from(
+        (cleaned as Record<string, unknown>[]).reduce((map, row) => {
+          map.set(row.word as string, row);
+          return map;
+        }, new Map<string, Record<string, unknown>>()).values()
+      );
       // onConflict matches the DB's UNIQUE (word) constraint
       // (vocabulary_library_word_unique) so a re-upload with the same
       // `word` updates the existing row instead of 23505-erroring.
-      const { error } = await service.from("vocabulary_library").upsert(cleaned, { onConflict: "word" });
+      const { error } = await service.from("vocabulary_library").upsert(deduped, { onConflict: "word" });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       // Auto-apply pending examples for all words in this batch
-      const words = cleaned.map((r) => String(r.word ?? "").trim()).filter(Boolean);
+      const words = deduped.map((r) => String(r.word ?? "").trim()).filter(Boolean);
       const autoApplied = await applyPendingExamples(service, words, "vocab");
-      return NextResponse.json({ ok: true, count: cleaned.length, autoApplied });
+      return NextResponse.json({ ok: true, count: deduped.length, autoApplied });
     }
 
     if (body.action === "attach_examples") {
