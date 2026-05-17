@@ -156,8 +156,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       return jsonError(400, `Session expired for exam ${examId} — please restart`);
     }
   }
-  // Deliberately do NOT delete sessions here — expires_at handles cleanup,
-  // and keeping them lets retries / re-submits stay consistent.
+  // Sessions are deleted at the end of this handler (post-grading) so a
+  // fresh /start gets a new seed → new shuffle. Re-submits with the same
+  // body still grade consistently because grading happens above; only
+  // *subsequent* attempts (where the user actually wants a fresh exam)
+  // see new positions.
 
   // ── 4) Build byId map + per-exam shuffle position maps ───────────────
   if (!scopeRows || scopeRows.length === 0) return jsonError(404, "No questions found");
@@ -255,6 +258,20 @@ export async function POST(req: Request): Promise<NextResponse> {
         console.error("[submit-batch] exam_results insert failed:", insertErr.message);
       }
     });
+  }
+
+  // Invalidate every session we just graded against — next /start for
+  // any of these (identity, exam_id) pairs will mint a fresh seed.
+  // Synchronous (not in after()) so a quick "Làm lại" tap can't race
+  // the delete and pick up the stale seed.
+  {
+    const { error: delErr } = await sb
+      .from("exam_sessions")
+      .delete()
+      .in("session_key", sessionKeys);
+    if (delErr) {
+      console.error("[submit-batch] exam_sessions delete failed:", delErr.message);
+    }
   }
 
   return NextResponse.json({

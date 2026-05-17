@@ -212,19 +212,45 @@ export function nChoices(
   return Math.min(4, 1 + w) || 1;
 }
 
-/** Insert `correct` into the wrongs list at position `pos`. */
+/** Shuffle `wrongs` deterministically with `seedVal` (mulberry32) and
+ *  then splice `correct` in at `pos`. Wrongs order and correct position
+ *  are independent — grading still cares only about the correct slot,
+ *  so re-deriving wrongs order at submit time is not required.
+ *  Falls back to `Math.random()` when no seed is given (callers from
+ *  tests / scripts that don't care about determinism). */
 export function shuffleChoices(
   correct: string,
   wrongs: string[],
   pos: number,
+  seedVal?: number,
 ): string[] {
   const cleaned = [correct, ...(wrongs ?? [])].filter(Boolean);
   if (cleaned.length < 2) return cleaned;
-  const wrongList = cleaned.slice(1);
-  const result = [...wrongList];
-  const safePos = Math.max(0, Math.min(pos, result.length));
-  result.splice(safePos, 0, correct);
-  return result;
+
+  const wrongList = [...(wrongs ?? [])].filter(Boolean);
+
+  // mulberry32 — small, fast, no allocations beyond the closure. Same
+  // seed → same permutation, so refresh during exam stays stable.
+  const rand = seedVal !== undefined
+    ? (() => {
+        let s = seedVal >>> 0;
+        return () => {
+          s = (s + 0x6D2B79F5) >>> 0;
+          let t = Math.imul(s ^ (s >>> 15), 1 | s);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      })()
+    : () => Math.random();
+
+  for (let i = wrongList.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [wrongList[i], wrongList[j]] = [wrongList[j], wrongList[i]];
+  }
+
+  const safePos = Math.max(0, Math.min(pos, wrongList.length));
+  wrongList.splice(safePos, 0, correct);
+  return wrongList;
 }
 
 // ─── Question shape passed in/out of the helpers ────────────────────
@@ -263,7 +289,10 @@ function applyShuffle(
   const wrongs = (node.wrongs ?? []) as string[];
   const n = nChoices(correct, wrongs);
   const pos = posMap?.[slotKey] ?? deterministicPos(userId, examId, slotKey, n);
-  node.choices = shuffleChoices(correct, wrongs, pos);
+  // Distinct namespace from deterministicPos so the wrongs permutation
+  // is independent of the correct-position pick.
+  const wrongsSeed = hashToInt(`${userId}|${examId}|${slotKey}|wrongs`);
+  node.choices = shuffleChoices(correct, wrongs, pos, wrongsSeed);
   delete node.correct;
   delete node.wrongs;
 }
