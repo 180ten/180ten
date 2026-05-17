@@ -31,9 +31,13 @@ export default function ExamAudioPlayer({ src, audioRef }: Props) {
     const onEnded    = () => setPlaying(false);
     const onTime     = () => {
       setCurrent(audio.currentTime);
-      // Sync range thumb position
-      if (rangeRef.current && isFinite(audio.duration)) {
-        rangeRef.current.value = String(audio.currentTime / audio.duration * 100);
+      // Sync range thumb position AND --pct CSS var (drives the
+      // orange→red gradient fill in the track) without triggering a
+      // React re-render on every timeupdate tick.
+      if (rangeRef.current && isFinite(audio.duration) && audio.duration > 0) {
+        const pct = (audio.currentTime / audio.duration) * 100;
+        rangeRef.current.value = String(pct);
+        rangeRef.current.style.setProperty("--pct", `${pct}%`);
       }
     };
     const onMeta     = () => setDuration(audio.duration);
@@ -63,7 +67,9 @@ export default function ExamAudioPlayer({ src, audioRef }: Props) {
   const onSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio || !isFinite(audio.duration)) return;
-    audio.currentTime = Number(e.target.value) / 100 * audio.duration;
+    const pct = Number(e.target.value);
+    audio.currentTime = pct / 100 * audio.duration;
+    e.target.style.setProperty("--pct", `${pct}%`);
   };
 
   const onSpeed = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -93,13 +99,15 @@ export default function ExamAudioPlayer({ src, audioRef }: Props) {
         aria-label={playing ? "Tạm dừng" : "Phát"}
       >
         {playing ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="5" y="3" width="4" height="18" rx="1"/>
-            <rect x="15" y="3" width="4" height="18" rx="1"/>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" rx="1.5"/>
+            <rect x="14" y="4" width="4" height="16" rx="1.5"/>
           </svg>
         ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5,3 19,12 5,21"/>
+          // Triangle nudged 1px right so it visually centers
+          // (the bounding box has more whitespace on the left edge).
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 2 }}>
+            <polygon points="6,4 20,12 6,20"/>
           </svg>
         )}
       </button>
