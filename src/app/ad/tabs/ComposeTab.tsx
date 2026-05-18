@@ -454,8 +454,14 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
     </div>
   );
 }
-function RichTa({ value, onChange, placeholder, rows = 5 }: {
+function RichTa({ value, onChange, placeholder, rows = 5, extraButtons }: {
   value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
+  /** Caller-supplied buttons appended to the right end of the
+   *  toolbar (after the colour picker). Used by ExplainFields to
+   *  fold its quick-insert + ⟨ans:…⟩ buttons into the same row.
+   *  Each button is expected to call e.preventDefault() on its own
+   *  mousedown so the textarea keeps focus. */
+  extraButtons?: React.ReactNode;
 }) {
   const [f, setF] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -611,6 +617,12 @@ function RichTa({ value, onChange, placeholder, rows = 5 }: {
             onChange={(e) => insert(`[color=${e.target.value}]`, "[/color]")}
           />
         </label>
+        {extraButtons && (
+          <>
+            <span style={{ width: 1, height: 18, background: C.border2, margin: "0 4px", alignSelf: "center" }} aria-hidden />
+            {extraButtons}
+          </>
+        )}
       </div>
       <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         rows={rows}
@@ -972,111 +984,112 @@ function ExplainFields({ data, onChange, qKey }: {
   return (
     <>
       <Fl label="Giải thích">
-        <div>
-          {/* Quick-insert toolbar — appends the canonical three-part
-              skeleton ("1. Đáp án đúng", "2. Bản dịch", "3. Tại sao
-              các đáp án khác sai") so every explanation follows the
-              same structure with one click. */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-            {([
-              { src: "/svg/explain1.svg", label: "1. Đáp án đúng",  text: "**1. Đáp án đúng :**\n" },
-              { src: "/svg/explain2.svg", label: "2. Bản dịch",     text: "**2. Bản dịch :**\n" },
-              { src: "/svg/explain3.svg", label: "3. Tại sao sai",  text: "**3. Tại sao các đáp án khác sai :**\n" },
-            ] as const).map(({ src, label, text }) => (
-              <button
-                key={label}
-                type="button"
-                title={`Chèn "${label}"`}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  padding: "3px 10px", borderRadius: 6,
-                  border: `1.5px solid ${C.border2}`,
-                  background: C.panel, color: C.text,
-                  fontSize: 12, cursor: "pointer", fontWeight: 600,
-                }}
-                onClick={() => {
-                  const cur = String(data.explanation ?? "");
-                  const updated = cur
-                    ? cur + (cur.endsWith("\n") ? "" : "\n") + text
-                    : text;
-                  onChange("explanation", updated);
-                }}
-              >
-                <img src={src} width={14} height={14} alt="" aria-hidden />
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* Đ / S1 / S2 / S3 — append ⟨ans:…⟩ tag that the review
-              pipeline resolves to ①②③④ based on shuffled position.
-              Hidden entirely for fixed-radio types (correct is a bare
-              "1".."4" digit) — there's no answer text worth tagging
-              when learners just pick a number. Each S-button only
-              renders when its wrong slot has content. */}
-          {(() => {
-            const { correct, wrongs } = getCorrectAndWrongs(data);
-            if (/^[1-4]$/.test(correct.trim())) return null;
+        {(() => {
+          // Build the right-hand toolbar payload once: skeleton 1/2/3
+          // icons, then the Đ/S1/S2/S3 quick-tag group when applicable.
+          // Every button uses onMouseDown preventDefault so clicking
+          // them never moves focus out of the textarea above.
+          const { correct, wrongs } = getCorrectAndWrongs(data);
+          const isShapeB = /^[1-4]$/.test(correct.trim());
+          const correctTrim = correct.trim();
 
-            const insertAns = (text: string) => {
-              const cur = String(data.explanation ?? "");
-              const tag = `⟨ans:${text}⟩ `;
-              const updated = cur
-                ? cur + (cur.endsWith("\n") ? "" : "\n") + tag
-                : tag;
-              onChange("explanation", updated);
-            };
+          const appendText = (text: string) => {
+            const cur = String(data.explanation ?? "");
+            const updated = cur
+              ? cur + (cur.endsWith("\n") ? "" : "\n") + text
+              : text;
+            onChange("explanation", updated);
+          };
+          const insertAns = (text: string) => appendText(`⟨ans:${text}⟩ `);
 
-            const correctTrim = correct.trim();
-            const shown =
+          const ansShown =
+            !isShapeB && (
               (correctTrim ? 1 : 0) +
-              wrongs.slice(0, 3).filter(w => w.trim()).length;
-            if (shown === 0) return null;
+              wrongs.slice(0, 3).filter(w => w.trim()).length
+            ) > 0;
 
-            return (
-              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                {correctTrim && (
-                  <button
-                    type="button"
-                    title={`Chèn ⟨ans:${correctTrim}⟩`}
-                    style={{
-                      padding: "3px 10px", borderRadius: 6,
-                      border: "1.5px solid #16a34a",
-                      background: "rgba(34,197,94,0.10)",
-                      color: "#16a34a", fontSize: 12,
-                      cursor: "pointer", fontWeight: 700,
-                    }}
-                    onClick={() => insertAns(correctTrim)}
-                  >Đ</button>
-                )}
-                {(["S1","S2","S3"] as const).map((label, i) => {
-                  const w = wrongs[i]?.trim();
-                  if (!w) return null;
-                  return (
+          const skeletonBtns = ([
+            { src: "/svg/explain1.svg", label: "1. Đáp án đúng",  text: "**1. Đáp án đúng :**\n" },
+            { src: "/svg/explain2.svg", label: "2. Bản dịch",     text: "**2. Bản dịch :**\n" },
+            { src: "/svg/explain3.svg", label: "3. Tại sao sai",  text: "**3. Tại sao các đáp án khác sai :**\n" },
+          ] as const).map(({ src, label, text }) => (
+            <button
+              key={label}
+              type="button"
+              title={`Chèn "${label}"`}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => appendText(text)}
+              style={{
+                width: 28, height: 28, padding: 4,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 6,
+                border: `1.5px solid ${C.border2}`,
+                background: C.panel,
+                cursor: "pointer",
+              }}
+            >
+              <img src={src} width={16} height={16} alt={label} />
+            </button>
+          ));
+
+          const extraButtons = (
+            <>
+              {skeletonBtns}
+              {ansShown && (
+                <>
+                  <span style={{ width: 1, height: 18, background: C.border2, margin: "0 2px", alignSelf: "center" }} aria-hidden />
+                  {correctTrim && (
                     <button
-                      key={label}
                       type="button"
-                      title={`Chèn ⟨ans:${w}⟩`}
+                      title={`Chèn ⟨ans:${correctTrim}⟩`}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => insertAns(correctTrim)}
                       style={{
                         padding: "3px 10px", borderRadius: 6,
-                        border: "1.5px solid #dc2626",
-                        background: "rgba(239,68,68,0.10)",
-                        color: "#dc2626", fontSize: 12,
+                        border: "1.5px solid #16a34a",
+                        background: "rgba(34,197,94,0.10)",
+                        color: "#16a34a", fontSize: 12,
                         cursor: "pointer", fontWeight: 700,
                       }}
-                      onClick={() => insertAns(w)}
-                    >{label}</button>
-                  );
-                })}
-              </div>
-            );
-          })()}
-          <RichTa
-            value={String(data.explanation||"")}
-            onChange={v => onChange("explanation",v)}
-            placeholder="Giải thích đáp án..." rows={3}
-          />
-          <ExplainPreview data={data} />
-        </div>
+                    >Đ</button>
+                  )}
+                  {(["S1","S2","S3"] as const).map((label, i) => {
+                    const w = wrongs[i]?.trim();
+                    if (!w) return null;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        title={`Chèn ⟨ans:${w}⟩`}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => insertAns(w)}
+                        style={{
+                          padding: "3px 10px", borderRadius: 6,
+                          border: "1.5px solid #dc2626",
+                          background: "rgba(239,68,68,0.10)",
+                          color: "#dc2626", fontSize: 12,
+                          cursor: "pointer", fontWeight: 700,
+                        }}
+                      >{label}</button>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          );
+
+          return (
+            <>
+              <RichTa
+                value={String(data.explanation||"")}
+                onChange={v => onChange("explanation",v)}
+                placeholder="Giải thích đáp án..." rows={3}
+                extraButtons={extraButtons}
+              />
+              <ExplainPreview data={data} />
+            </>
+          );
+        })()}
       </Fl>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Fl label="Từ vựng (tìm & chọn từ thư viện)">
