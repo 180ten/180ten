@@ -457,11 +457,14 @@ function Ta({ value, onChange, placeholder, rows = 3, noBracketBtn }: {
 function RichTa({ value, onChange, placeholder, rows = 5, extraButtons }: {
   value: string; onChange: (v: string) => void; placeholder?: string; rows?: number;
   /** Caller-supplied buttons appended to the right end of the
-   *  toolbar (after the colour picker). Used by ExplainFields to
-   *  fold its quick-insert + ⟨ans:…⟩ buttons into the same row.
-   *  Each button is expected to call e.preventDefault() on its own
-   *  mousedown so the textarea keeps focus. */
-  extraButtons?: React.ReactNode;
+   *  toolbar (after the colour picker). Receives RichTa's internal
+   *  `insert(before, after)` so the buttons splice at the cursor
+   *  instead of appending to the end, plus `rememberSelection()`
+   *  for callers that need to snapshot the caret before opening a
+   *  native picker. Each button is expected to call
+   *  e.preventDefault() on its own mousedown so the textarea keeps
+   *  focus. */
+  extraButtons?: (insert: (before: string, after?: string) => void, rememberSelection: () => void) => React.ReactNode;
 }) {
   const [f, setF] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -620,7 +623,7 @@ function RichTa({ value, onChange, placeholder, rows = 5, extraButtons }: {
         {extraButtons && (
           <>
             <span style={{ width: 1, height: 18, background: C.border2, margin: "0 4px", alignSelf: "center" }} aria-hidden />
-            {extraButtons}
+            {extraButtons(insert, rememberSelection)}
           </>
         )}
       </div>
@@ -985,98 +988,19 @@ function ExplainFields({ data, onChange, qKey }: {
     <>
       <Fl label="Giải thích">
         {(() => {
-          // Build the right-hand toolbar payload once: skeleton 1/2/3
-          // icons, then the Đ/S1/S2/S3 quick-tag group when applicable.
-          // Every button uses onMouseDown preventDefault so clicking
-          // them never moves focus out of the textarea above.
+          // Compute the visibility gate once. The callback below
+          // receives RichTa's internal `insert(before, after)` so
+          // every button splices at the live caret position (not at
+          // end-of-string), and the onMouseDown preventDefault means
+          // focus never leaves the textarea while clicking.
           const { correct, wrongs } = getCorrectAndWrongs(data);
           const isShapeB = /^[1-4]$/.test(correct.trim());
           const correctTrim = correct.trim();
-
-          const appendText = (text: string) => {
-            const cur = String(data.explanation ?? "");
-            const updated = cur
-              ? cur + (cur.endsWith("\n") ? "" : "\n") + text
-              : text;
-            onChange("explanation", updated);
-          };
-          const insertAns = (text: string) => appendText(`⟨ans:${text}⟩ `);
-
           const ansShown =
             !isShapeB && (
               (correctTrim ? 1 : 0) +
               wrongs.slice(0, 3).filter(w => w.trim()).length
             ) > 0;
-
-          const skeletonBtns = ([
-            { src: "/svg/explain1.svg", label: "1. Đáp án đúng",  text: "**1. Đáp án đúng :**\n" },
-            { src: "/svg/explain2.svg", label: "2. Bản dịch",     text: "**2. Bản dịch :**\n" },
-            { src: "/svg/explain3.svg", label: "3. Tại sao sai",  text: "**3. Tại sao các đáp án khác sai :**\n" },
-          ] as const).map(({ src, label, text }) => (
-            <button
-              key={label}
-              type="button"
-              title={`Chèn "${label}"`}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => appendText(text)}
-              style={{
-                width: 28, height: 28, padding: 4,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                borderRadius: 6,
-                border: `1.5px solid ${C.border2}`,
-                background: C.panel,
-                cursor: "pointer",
-              }}
-            >
-              <img src={src} width={16} height={16} alt={label} />
-            </button>
-          ));
-
-          const extraButtons = (
-            <>
-              {skeletonBtns}
-              {ansShown && (
-                <>
-                  <span style={{ width: 1, height: 18, background: C.border2, margin: "0 2px", alignSelf: "center" }} aria-hidden />
-                  {correctTrim && (
-                    <button
-                      type="button"
-                      title={`Chèn ⟨ans:${correctTrim}⟩`}
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => insertAns(correctTrim)}
-                      style={{
-                        padding: "3px 10px", borderRadius: 6,
-                        border: "1.5px solid #16a34a",
-                        background: "rgba(34,197,94,0.10)",
-                        color: "#16a34a", fontSize: 12,
-                        cursor: "pointer", fontWeight: 700,
-                      }}
-                    >Đ</button>
-                  )}
-                  {(["S1","S2","S3"] as const).map((label, i) => {
-                    const w = wrongs[i]?.trim();
-                    if (!w) return null;
-                    return (
-                      <button
-                        key={label}
-                        type="button"
-                        title={`Chèn ⟨ans:${w}⟩`}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => insertAns(w)}
-                        style={{
-                          padding: "3px 10px", borderRadius: 6,
-                          border: "1.5px solid #dc2626",
-                          background: "rgba(239,68,68,0.10)",
-                          color: "#dc2626", fontSize: 12,
-                          cursor: "pointer", fontWeight: 700,
-                        }}
-                      >{label}</button>
-                    );
-                  })}
-                </>
-              )}
-            </>
-          );
 
           return (
             <>
@@ -1084,7 +1008,73 @@ function ExplainFields({ data, onChange, qKey }: {
                 value={String(data.explanation||"")}
                 onChange={v => onChange("explanation",v)}
                 placeholder="Giải thích đáp án..." rows={3}
-                extraButtons={extraButtons}
+                extraButtons={(insert) => (
+                  <>
+                    {([
+                      { src: "/svg/explain1.svg", label: "1. Đáp án đúng",  text: "**1. Đáp án đúng :**\n" },
+                      { src: "/svg/explain2.svg", label: "2. Bản dịch",     text: "**2. Bản dịch :**\n" },
+                      { src: "/svg/explain3.svg", label: "3. Tại sao sai",  text: "**3. Tại sao các đáp án khác sai :**\n" },
+                    ] as const).map(({ src, label, text }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        title={`Chèn "${label}"`}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => insert(text, "")}
+                        style={{
+                          width: 28, height: 28, padding: 4,
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                          borderRadius: 6,
+                          border: `1.5px solid ${C.border2}`,
+                          background: C.panel,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img src={src} width={16} height={16} alt={label} />
+                      </button>
+                    ))}
+                    {ansShown && (
+                      <>
+                        <span style={{ width: 1, height: 18, background: C.border2, margin: "0 2px", alignSelf: "center" }} aria-hidden />
+                        {correctTrim && (
+                          <button
+                            type="button"
+                            title={`Chèn ⟨ans:${correctTrim}⟩`}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => insert(`⟨ans:${correctTrim}⟩ `, "")}
+                            style={{
+                              padding: "3px 10px", borderRadius: 6,
+                              border: "1.5px solid #16a34a",
+                              background: "rgba(34,197,94,0.10)",
+                              color: "#16a34a", fontSize: 12,
+                              cursor: "pointer", fontWeight: 700,
+                            }}
+                          >Đ</button>
+                        )}
+                        {(["S1","S2","S3"] as const).map((label, i) => {
+                          const w = wrongs[i]?.trim();
+                          if (!w) return null;
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              title={`Chèn ⟨ans:${w}⟩`}
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => insert(`⟨ans:${w}⟩ `, "")}
+                              style={{
+                                padding: "3px 10px", borderRadius: 6,
+                                border: "1.5px solid #dc2626",
+                                background: "rgba(239,68,68,0.10)",
+                                color: "#dc2626", fontSize: 12,
+                                cursor: "pointer", fontWeight: 700,
+                              }}
+                            >{label}</button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </>
+                )}
               />
               <ExplainPreview data={data} />
             </>
