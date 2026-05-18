@@ -553,13 +553,17 @@ const MemoChoiceBtn = memo(ChoiceBtn);
 
 // ── Explain panel ──
 function ExplainPanel({
-  qKey, data, onAddToAnki, taggedWords = [],
+  qKey, data, onAddToAnki, taggedWords = [], correctIdx,
 }: {
   qKey: string;
   data: SubQuestion | Record<string, unknown>;
   onAddToAnki?: (card: AnkiCardInput) => Promise<void>;
   /** Words extracted from 【】 in passage + question stem (review mode). */
   taggedWords?: string[];
+  /** Position of the correct answer in the shuffled choices array
+   *  (post-submit). Lets sortByCircled pin the correct line so only
+   *  the wrong-answer lines reorder. */
+  correctIdx?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState(0);
@@ -581,6 +585,7 @@ function ExplainPanel({
   // visible in review instead of silently disappearing.
   const choicesArr = Array.isArray(d.choices) ? (d.choices as string[]) : [];
   const CIRCLED = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
+  const CIRCLED_RANK = new Map(CIRCLED.map((g, i) => [g, i] as const));
   const resolveAns = (s: string): string =>
     s.replace(/⟨ans:([^⟩]+)⟩/g, (_, name) => {
       const needle = String(name).trim();
@@ -590,6 +595,31 @@ function ExplainPanel({
       if (i < 0) return `⟨ans:${needle}?⟩`;
       return CIRCLED[i] ?? `(${i + 1})`;
     });
+
+  // Reorder wrong-answer lines so they appear in ①②③④ order, while
+  // keeping the correct line pinned to its admin-authored position.
+  // Non-circled lines (e.g. a bonus note) keep their absolute index.
+  const correctGlyph = correctIdx !== undefined ? (CIRCLED[correctIdx] ?? null) : null;
+  const sortByCircled = (s: string): string => {
+    const lines = s.split("\n");
+    const allSlots: { idx: number; rank: number; line: string }[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const first = lines[i].charAt(0);
+      const rank = CIRCLED_RANK.get(first);
+      if (rank !== undefined) allSlots.push({ idx: i, rank, line: lines[i] });
+    }
+    if (allSlots.length < 2) return s;
+
+    const nonPinSlots = allSlots.filter(sl => sl.line.charAt(0) !== correctGlyph);
+    if (nonPinSlots.length < 2) return s;
+
+    const sortedWrongs = [...nonPinSlots].sort((a, b) => a.rank - b.rank);
+    const nonPinByIdx  = [...nonPinSlots].sort((a, b) => a.idx - b.idx);
+    nonPinByIdx.forEach((slot, k) => { lines[slot.idx] = sortedWrongs[k].line; });
+    // Pin slots are skipped — correct line stays where the admin put it.
+
+    return lines.join("\n");
+  };
 
   const tabs = ["📝 Giải thích", "📖 Từ vựng", "✏️ Ngữ pháp"];
 
@@ -622,7 +652,7 @@ function ExplainPanel({
             {tab === 0 && (
               expl
                 ? <div style={{ whiteSpace: "pre-wrap" }}>
-                    <VocabSegments text={resolveAns(expl)} renderText={sanitizedRenderRichInline} />
+                    <VocabSegments text={sortByCircled(resolveAns(expl))} renderText={sanitizedRenderRichInline} />
                   </div>
                 : <span className="explain-empty">Chưa có nội dung.</span>
             )}
@@ -762,7 +792,7 @@ function QBlock({
         </div>
       )}
       {submitted && explainData && (
-        <ExplainPanel qKey={qKey} data={explainData} onAddToAnki={onAddToAnki} taggedWords={taggedWords} />
+        <ExplainPanel qKey={qKey} data={explainData} onAddToAnki={onAddToAnki} taggedWords={taggedWords} correctIdx={correctIdx} />
       )}
     </div>
   );
