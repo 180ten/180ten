@@ -858,6 +858,29 @@ function GrammarInput({ value, onChange }: { value: string; onChange: (v: string
     </div>
   );
 }
+// Normalise the three correct/wrongs shapes the compose forms emit:
+//  A) standard: `data.correct: string` + `data.wrongs: string[]`
+//  B) fixed-radio (listen_gaiyou/sokuji, listen_togo t1, bjt_*_3):
+//     `data.correct = "1".."4"`, no wrongs.
+//  C) listen_togo t2: `data.options: string[]` + `data.correctIdx`.
+// Returns the canonical (correct, wrongs[]) pair the ExplainFields
+// buttons need; the caller still filters Shape B by inspecting the
+// returned `correct` (digit-only) before showing the buttons.
+function getCorrectAndWrongs(d: QData): { correct: string; wrongs: string[] } {
+  if (Array.isArray(d.options)) {
+    const opts = (d.options as unknown[]).map(o => String(o ?? ""));
+    const idx = Math.max(0, Math.min(
+      opts.length - 1,
+      parseInt(String(d.correctIdx ?? "0"), 10) || 0,
+    ));
+    return { correct: opts[idx] ?? "", wrongs: opts.filter((_, i) => i !== idx) };
+  }
+  return {
+    correct: String(d.correct ?? ""),
+    wrongs:  (Array.isArray(d.wrongs) ? (d.wrongs as string[]) : []).map(String),
+  };
+}
+
 function ExplainFields({ data, onChange, qKey }: {
   data: QData; onChange: (k: string, v: string) => void; qKey?: string;
 }) {
@@ -899,6 +922,69 @@ function ExplainFields({ data, onChange, qKey }: {
               </button>
             ))}
           </div>
+          {/* Đ / S1 / S2 / S3 — append ⟨ans:…⟩ tag that the review
+              pipeline resolves to ①②③④ based on shuffled position.
+              Hidden entirely for fixed-radio types (correct is a bare
+              "1".."4" digit) — there's no answer text worth tagging
+              when learners just pick a number. Each S-button only
+              renders when its wrong slot has content. */}
+          {(() => {
+            const { correct, wrongs } = getCorrectAndWrongs(data);
+            if (/^[1-4]$/.test(correct.trim())) return null;
+
+            const insertAns = (text: string) => {
+              const cur = String(data.explanation ?? "");
+              const tag = `⟨ans:${text}⟩ `;
+              const updated = cur
+                ? cur + (cur.endsWith("\n") ? "" : "\n") + tag
+                : tag;
+              onChange("explanation", updated);
+            };
+
+            const correctTrim = correct.trim();
+            const shown =
+              (correctTrim ? 1 : 0) +
+              wrongs.slice(0, 3).filter(w => w.trim()).length;
+            if (shown === 0) return null;
+
+            return (
+              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                {correctTrim && (
+                  <button
+                    type="button"
+                    title={`Chèn ⟨ans:${correctTrim}⟩`}
+                    style={{
+                      padding: "3px 10px", borderRadius: 6,
+                      border: "1.5px solid #16a34a",
+                      background: "rgba(34,197,94,0.10)",
+                      color: "#16a34a", fontSize: 12,
+                      cursor: "pointer", fontWeight: 700,
+                    }}
+                    onClick={() => insertAns(correctTrim)}
+                  >Đ</button>
+                )}
+                {(["S1","S2","S3"] as const).map((label, i) => {
+                  const w = wrongs[i]?.trim();
+                  if (!w) return null;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      title={`Chèn ⟨ans:${w}⟩`}
+                      style={{
+                        padding: "3px 10px", borderRadius: 6,
+                        border: "1.5px solid #dc2626",
+                        background: "rgba(239,68,68,0.10)",
+                        color: "#dc2626", fontSize: 12,
+                        cursor: "pointer", fontWeight: 700,
+                      }}
+                      onClick={() => insertAns(w)}
+                    >{label}</button>
+                  );
+                })}
+              </div>
+            );
+          })()}
           <RichTa
             value={String(data.explanation||"")}
             onChange={v => onChange("explanation",v)}
