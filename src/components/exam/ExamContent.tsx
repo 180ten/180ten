@@ -588,7 +588,11 @@ function ExplainPanel({
   const CIRCLED_RANK = new Map(CIRCLED.map((g, i) => [g, i] as const));
   const resolveAns = (s: string): string =>
     s.replace(/⟨ans:([^⟩]+)⟩/g, (_, name) => {
-      const needle = String(name).trim();
+      // Strip the needle the same way we strip choices so admins can
+      // paste the tagged form verbatim — e.g. ⟨ans:〖その〗〖画家〗は…⟩
+      // matches choices[i] = "〖その〗〖画家〗は…" after both sides
+      // strip to "その画家は…".
+      const needle = stripVocabTags(stripGrammarTags(String(name).trim())).trim();
       const i = choicesArr.findIndex(c =>
         stripVocabTags(stripGrammarTags(c)).trim() === needle
       );

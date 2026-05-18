@@ -872,7 +872,9 @@ const CIRCLED_RANK_PREVIEW = new Map<string, number>(CIRCLED_PREVIEW.map((g, i) 
 
 function resolveAnsPreview(text: string, choices: string[]): string {
   return text.replace(/⟨ans:([^⟩]+)⟩/g, (_, name) => {
-    const needle = String(name).trim();
+    // Strip the needle the same way we strip choices — admins can
+    // paste the tagged form verbatim (〖…〗 / 〔…〕) and still match.
+    const needle = stripVocabTags(stripGrammarTags(String(name).trim())).trim();
     const i = choices.findIndex(c =>
       stripVocabTags(stripGrammarTags(c)).trim() === needle
     );
