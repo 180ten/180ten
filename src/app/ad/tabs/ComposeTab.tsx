@@ -863,7 +863,49 @@ function ExplainFields({ data, onChange, qKey }: {
 }) {
   return (
     <>
-      <Fl label="Giải thích"><RichTa value={String(data.explanation||"")} onChange={v => onChange("explanation",v)} placeholder="Giải thích đáp án..." rows={3} /></Fl>
+      <Fl label="Giải thích">
+        <div>
+          {/* Quick-insert toolbar — appends the canonical three-part
+              skeleton ("1. Đáp án đúng", "2. Bản dịch", "3. Tại sao
+              các đáp án khác sai") so every explanation follows the
+              same structure with one click. */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+            {([
+              { src: "/svg/explain1.svg", label: "1. Đáp án đúng",  text: "**1. Đáp án đúng :**\n" },
+              { src: "/svg/explain2.svg", label: "2. Bản dịch",     text: "**2. Bản dịch :**\n" },
+              { src: "/svg/explain3.svg", label: "3. Tại sao sai",  text: "**3. Tại sao các đáp án khác sai :**\n" },
+            ] as const).map(({ src, label, text }) => (
+              <button
+                key={label}
+                type="button"
+                title={`Chèn "${label}"`}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "3px 10px", borderRadius: 6,
+                  border: `1.5px solid ${C.border2}`,
+                  background: C.panel, color: C.text,
+                  fontSize: 12, cursor: "pointer", fontWeight: 600,
+                }}
+                onClick={() => {
+                  const cur = String(data.explanation ?? "");
+                  const updated = cur
+                    ? cur + (cur.endsWith("\n") ? "" : "\n") + text
+                    : text;
+                  onChange("explanation", updated);
+                }}
+              >
+                <img src={src} width={14} height={14} alt="" aria-hidden />
+                {label}
+              </button>
+            ))}
+          </div>
+          <RichTa
+            value={String(data.explanation||"")}
+            onChange={v => onChange("explanation",v)}
+            placeholder="Giải thích đáp án..." rows={3}
+          />
+        </div>
+      </Fl>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Fl label="Từ vựng (tìm & chọn từ thư viện)">
           <VocabInput key={"v_"+(qKey||"new")} value={String(data.vocab||"")} onChange={v => onChange("vocab",v)} />
