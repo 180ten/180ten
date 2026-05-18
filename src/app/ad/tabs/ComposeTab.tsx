@@ -10,8 +10,8 @@ import {
   type AudioScriptLine,
 } from "@/lib/audioScript";
 import { sanitizedRenderRichInline } from "@/lib/furigana";
-import { extractVocabSegments } from "@/lib/vocabTag";
-import { extractGrammarSegments } from "@/lib/grammarTag";
+import { extractVocabSegments, stripVocabTags } from "@/lib/vocabTag";
+import { extractGrammarSegments, stripGrammarTags } from "@/lib/grammarTag";
 import { sb } from "@/lib/supabase";
 import { adminUpsertExam, adminUpsertQuestions, adminDeleteQuestions, AdminApiError } from "@/lib/adminApi";
 import { randomUUID } from "@/lib/uuid";
@@ -858,6 +858,89 @@ function GrammarInput({ value, onChange }: { value: string; onChange: (v: string
     </div>
   );
 }
+// ── Explain preview helpers ─────────────────────────────────────
+// Live preview of the explanation field. resolveAns mirrors the
+// review-side logic (ExamContent.tsx ExplainPanel) so admins see
+// roughly what learners will see. One difference: compose has no
+// shuffled answerKey yet, so we synthesise `choices` as
+// [correct, ...wrongs] (correct at index 0) — every ⟨ans:correct⟩
+// previews as ①, the wrongs as ②③④ in admin-authored order. A
+// hint line below the preview reminds the admin those numbers WILL
+// move once the exam is taken (real shuffle).
+const CIRCLED_PREVIEW = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"] as const;
+const CIRCLED_RANK_PREVIEW = new Map<string, number>(CIRCLED_PREVIEW.map((g, i) => [g, i]));
+
+function resolveAnsPreview(text: string, choices: string[]): string {
+  return text.replace(/⟨ans:([^⟩]+)⟩/g, (_, name) => {
+    const needle = String(name).trim();
+    const i = choices.findIndex(c =>
+      stripVocabTags(stripGrammarTags(c)).trim() === needle
+    );
+    return i >= 0 ? (CIRCLED_PREVIEW[i] ?? `(${i + 1})`) : `⟨ans:${needle}?⟩`;
+  });
+}
+
+function sortByCircledPreview(s: string, correctGlyph: string | null): string {
+  const lines = s.split("\n");
+  const allSlots: { idx: number; rank: number; line: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const first = lines[i].charAt(0);
+    const rank = CIRCLED_RANK_PREVIEW.get(first);
+    if (rank !== undefined) allSlots.push({ idx: i, rank, line: lines[i] });
+  }
+  if (allSlots.length < 2) return s;
+  const nonPin = allSlots.filter(sl => sl.line.charAt(0) !== correctGlyph);
+  if (nonPin.length < 2) return s;
+  const sorted = [...nonPin].sort((a, b) => a.rank - b.rank);
+  const byIdx  = [...nonPin].sort((a, b) => a.idx - b.idx);
+  byIdx.forEach((slot, k) => { lines[slot.idx] = sorted[k].line; });
+  return lines.join("\n");
+}
+
+function ExplainPreview({ data }: { data: QData }) {
+  const expl = String(data.explanation ?? "").trim();
+  if (!expl) return null;
+  const { correct, wrongs } = getCorrectAndWrongs(data);
+  const choices = correct.trim() ? [correct, ...wrongs.filter(Boolean)] : [];
+  const correctGlyph = choices.length > 0 ? CIRCLED_PREVIEW[0] : null;
+  const resolved = sortByCircledPreview(
+    resolveAnsPreview(expl, choices),
+    correctGlyph,
+  );
+  const hasAnsTag = /⟨ans:/.test(expl);
+  return (
+    <div style={{
+      marginTop: 10,
+      padding: "10px 14px",
+      borderRadius: 8,
+      border: `1.5px solid ${C.border2}`,
+      background: C.panel,
+      fontSize: 13,
+      lineHeight: 1.75,
+    }}>
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        color: C.muted,
+        marginBottom: 6,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}>
+        Preview giải thích
+      </div>
+      <div
+        style={{ whiteSpace: "pre-wrap" }}
+        dangerouslySetInnerHTML={{ __html: sanitizedRenderRichInline(resolved) }}
+      />
+      {hasAnsTag && choices.length > 0 && (
+        <div style={{ fontSize: 11, color: C.muted2, marginTop: 6, fontStyle: "italic" }}>
+          * Số thứ tự ①②③④ sẽ thay đổi sau khi shuffle khi học viên làm bài thật
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Normalise the three correct/wrongs shapes the compose forms emit:
 //  A) standard: `data.correct: string` + `data.wrongs: string[]`
 //  B) fixed-radio (listen_gaiyou/sokuji, listen_togo t1, bjt_*_3):
@@ -990,6 +1073,7 @@ function ExplainFields({ data, onChange, qKey }: {
             onChange={v => onChange("explanation",v)}
             placeholder="Giải thích đáp án..." rows={3}
           />
+          <ExplainPreview data={data} />
         </div>
       </Fl>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
