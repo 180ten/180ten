@@ -129,9 +129,41 @@ export function renderRich(t: string): string {
 //   - Inline: span, ruby, rt, rp, strong, em, b, i, br
 //   - Attrs: style (size/align/vertical), class, data-word (vocab tags)
 const SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ["div", "span", "ruby", "rt", "rp", "strong", "em", "b", "i", "br"],
-  ALLOWED_ATTR: ["style", "class", "data-word"],
+  ALLOWED_TAGS: ["div", "span", "ruby", "rt", "rp", "strong", "em", "b", "i", "br",
+                 "table", "thead", "tbody", "tr", "td", "th"],
+  ALLOWED_ATTR: ["style", "class", "data-word", "colspan", "rowspan"],
 };
+
+// ── BBCode table pre-pass ────────────────────────────────────
+// [table]…[/table] → <table class="rte-table">…</table>. First
+// line = headers, subsequent lines = body rows, '|' separates
+// cells. Cell content runs through renderRichInline so 〖vocab〗 /
+// 〔grammar〕 / furigana / **bold** / *italic* / __underline__ all
+// work inside cells. Must run BEFORE renderRich(Inline) so the
+// remaining text doesn't mistake `|` for anything else.
+function convertBBTable(src: string): string {
+  if (!src || !/\[table\]/i.test(src)) return src;
+  return src.replace(/\[table\]([\s\S]*?)\[\/table\]/gi, (_, inner) => {
+    const rows = String(inner).trim().split("\n").map(l => l.trim()).filter(Boolean);
+    if (rows.length === 0) return "";
+    const splitRow = (line: string) => line.split("|").map(c => c.trim());
+    const head = splitRow(rows[0]);
+    let html = '<table class="rte-table"><thead><tr>';
+    for (const h of head) html += `<th>${renderRichInline(h)}</th>`;
+    html += '</tr></thead>';
+    if (rows.length > 1) {
+      html += '<tbody>';
+      for (const row of rows.slice(1)) {
+        html += '<tr>';
+        for (const cell of splitRow(row)) html += `<td>${renderRichInline(cell)}</td>`;
+        html += '</tr>';
+      }
+      html += '</tbody>';
+    }
+    html += '</table>';
+    return html;
+  });
+}
 
 /** Sanitise an HTML fragment with the renderer-aware allowlist. */
 export function sanitizeHtml(html: string): string {
@@ -141,13 +173,13 @@ export function sanitizeHtml(html: string): string {
 
 /** renderRich + sanitize — preferred for any dangerouslySetInnerHTML call. */
 export function sanitizedRenderRich(t: string): string {
-  return sanitizeHtml(renderRich(t));
+  return sanitizeHtml(renderRich(convertBBTable(t)));
 }
 
 /** renderRichInline + sanitize — for fragments that should NOT add the
  *  block-level wrapper div (e.g. children inside a parent renderRich div). */
 export function sanitizedRenderRichInline(t: string): string {
-  return sanitizeHtml(renderRichInline(t));
+  return sanitizeHtml(renderRichInline(convertBBTable(t)));
 }
 
 
